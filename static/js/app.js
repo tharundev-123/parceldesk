@@ -1,18 +1,37 @@
 /**
- * ParcelDesk - Frontend Application Logic
- * Theme: Carbon + Signal Orange (Industrial Logistics Management)
- * Integrates 3-Tier Architecture, RBAC, OTP Handover, and Analytics
+ * ParcelDesk — Modern Logistics SaaS Application Controller
+ * Design Theme: Carbon + Signal Orange
+ * Preserves 100% backend API contracts, 3NF transactions, and security models.
  */
 
 let currentUser = null;
 let allStudentsList = [];
 let allGuardParcels = [];
+let activeStatusFilter = 'all';
+let activeCourierFilter = '';
 let timerIntervals = {};
 
-// Initialize application on DOM ready
+// Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
+    initClock();
     checkCurrentUser();
 });
+
+// -------------------------------------------------------------
+// Live Digital Station Clock
+// -------------------------------------------------------------
+function initClock() {
+    const clockElem = document.getElementById('station-clock');
+    const updateTime = () => {
+        const now = new Date();
+        const hrs = String(now.getHours()).padStart(2, '0');
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        const secs = String(now.getSeconds()).padStart(2, '0');
+        if (clockElem) clockElem.textContent = `${hrs}:${mins}:${secs}`;
+    };
+    updateTime();
+    setInterval(updateTime, 1000);
+}
 
 // -------------------------------------------------------------
 // Authentication & Role Routing
@@ -24,55 +43,65 @@ async function checkCurrentUser() {
         if (data.authenticated && data.user) {
             setUserState(data.user);
         } else {
-            // Default demo auto-login as gate guard for immediate exploration
-            await demoLogin('guard1', 'guard123');
+            // Default demo auto-login as gate guard for immediate preview
+            await demoLogin('guard1', 'guard123', false);
         }
     } catch (err) {
         console.error('Session check failed:', err);
-        showToast('Failed to connect to backend API.', 'error');
+        showToast('Failed to connect to backend server.', 'error');
     }
 }
 
 function setUserState(user) {
     currentUser = user;
 
-    // Update navbar badge
-    document.getElementById('auth-logged-out').classList.add('hidden');
-    document.getElementById('auth-logged-in').classList.remove('hidden');
+    // Update User Profile Footer
+    const nameElem = document.getElementById('user-display-name');
+    const roleElem = document.getElementById('user-role-pill');
+    const avatarElem = document.getElementById('sidebar-avatar');
 
-    const rolePill = document.getElementById('user-role-pill');
-    rolePill.textContent = user.role.toUpperCase();
-    rolePill.className = `role-badge ${user.role}`;
+    if (nameElem) nameElem.textContent = user.full_name;
+    if (roleElem) {
+        roleElem.textContent = user.role.toUpperCase();
+        roleElem.className = `user-meta-role text-orange`;
+    }
+    if (avatarElem) {
+        avatarElem.textContent = (user.full_name || 'U').charAt(0).toUpperCase();
+    }
 
-    document.getElementById('user-display-name').textContent = user.full_name;
+    // Sync Persona Select Dropdown
+    const personaSelect = document.getElementById('persona-select');
+    if (personaSelect) {
+        personaSelect.value = user.username;
+    }
 
-    // Update Sidebar role indicator
-    const sidebarRoleText = document.getElementById('sidebar-role-name');
-    const topbarContextTitle = document.getElementById('topbar-context-title');
+    // Update Topbar Station Context
+    const contextTitle = document.getElementById('topbar-context-title');
+    const topbarActions = document.getElementById('topbar-guard-actions');
 
-    // Hide all role views first
+    // Hide all role workspaces
     document.getElementById('guard-view').classList.add('hidden');
     document.getElementById('student-view').classList.add('hidden');
     document.getElementById('warden-view').classList.add('hidden');
 
     // Hide all sidebar nav sections
-    document.getElementById('sidebar-section-guard').classList.add('hidden');
-    document.getElementById('sidebar-section-student').classList.add('hidden');
-    document.getElementById('sidebar-section-warden').classList.add('hidden');
+    document.getElementById('nav-guard-section').classList.add('hidden');
+    document.getElementById('nav-student-section').classList.add('hidden');
+    document.getElementById('nav-warden-section').classList.add('hidden');
 
-    // Display view matching user role
     if (user.role === 'guard') {
         document.getElementById('guard-view').classList.remove('hidden');
-        document.getElementById('sidebar-section-guard').classList.remove('hidden');
-        if (sidebarRoleText) sidebarRoleText.textContent = 'GATE STAFF';
-        if (topbarContextTitle) topbarContextTitle.textContent = 'GATE OPERATIONS CONSOLE';
+        document.getElementById('nav-guard-section').classList.remove('hidden');
+        if (contextTitle) contextTitle.textContent = 'GATE OPERATIONS // LIVE CONSOLE';
+        if (topbarActions) topbarActions.classList.remove('hidden');
         loadGuardParcels();
         loadStudentsDropdown();
     } else if (user.role === 'student') {
         document.getElementById('student-view').classList.remove('hidden');
-        document.getElementById('sidebar-section-student').classList.remove('hidden');
-        if (sidebarRoleText) sidebarRoleText.textContent = 'STUDENT RESIDENT';
-        if (topbarContextTitle) topbarContextTitle.textContent = 'STUDENT DELIVERY PORTAL';
+        document.getElementById('nav-student-section').classList.remove('hidden');
+        if (contextTitle) contextTitle.textContent = 'RESIDENT PORTAL // MY DELIVERIES';
+        if (topbarActions) topbarActions.classList.add('hidden');
+        
         document.getElementById('student-portal-name').textContent = user.full_name;
         if (user.student_profile) {
             document.getElementById('student-portal-details').textContent = 
@@ -82,15 +111,15 @@ function setUserState(user) {
         loadStudentNotifications();
     } else if (user.role === 'warden' || user.role === 'admin') {
         document.getElementById('warden-view').classList.remove('hidden');
-        document.getElementById('sidebar-section-warden').classList.remove('hidden');
-        if (sidebarRoleText) sidebarRoleText.textContent = user.role === 'admin' ? 'SYSTEM ADMIN' : 'CHIEF WARDEN';
-        if (topbarContextTitle) topbarContextTitle.textContent = 'LOGISTICS ANALYTICS & AUDIT';
+        document.getElementById('nav-warden-section').classList.remove('hidden');
+        if (contextTitle) contextTitle.textContent = 'CAMPUS LOGISTICS // AUDIT & ANALYTICS';
+        if (topbarActions) topbarActions.classList.add('hidden');
         loadWardenDashboard();
         loadAuditLogs();
     }
 }
 
-async function demoLogin(username, password) {
+async function demoLogin(username, password, showNotify = true) {
     try {
         const res = await fetch('/api/login', {
             method: 'POST',
@@ -99,13 +128,29 @@ async function demoLogin(username, password) {
         });
         const data = await res.json();
         if (res.ok) {
-            showToast(`Switched persona to ${data.user.full_name} (${data.user.role})`, 'success');
+            if (showNotify) {
+                showToast(`Switched persona to ${data.user.full_name} (${data.user.role.toUpperCase()})`, 'success');
+            }
             setUserState(data.user);
         } else {
-            showToast(data.error || 'Login failed', 'error');
+            showToast(data.error || 'Authentication failed', 'error');
         }
     } catch (err) {
-        showToast('Error connecting to authentication endpoint.', 'error');
+        showToast('Network error during authentication.', 'error');
+    }
+}
+
+function handlePersonaSelectChange(selectElem) {
+    const val = selectElem.value;
+    const creds = {
+        'guard1': 'guard123',
+        'student1': 'student123',
+        'student2': 'student123',
+        'warden1': 'warden123',
+        'admin': 'admin123'
+    };
+    if (creds[val]) {
+        demoLogin(val, creds[val]);
     }
 }
 
@@ -113,40 +158,50 @@ async function handleLogout() {
     try {
         await fetch('/api/logout', { method: 'POST' });
         currentUser = null;
-        document.getElementById('auth-logged-in').classList.add('hidden');
-        document.getElementById('auth-logged-out').classList.remove('hidden');
         showToast('Signed out of terminal.', 'info');
-        // Switch back to guard demo
-        demoLogin('guard1', 'guard123');
+        demoLogin('guard1', 'guard123', false);
     } catch (err) {
         console.error('Logout error:', err);
     }
 }
 
 // -------------------------------------------------------------
-// Sidebar & Navigation Controls
+// Sidebar Collapse & Mobile Navigation
 // -------------------------------------------------------------
-function toggleSidebar() {
-    const sidebar = document.getElementById('app-sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    sidebar.classList.toggle('open');
+function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('saas-sidebar');
+    sidebar.classList.toggle('collapsed');
+}
+
+function toggleMobileMenu() {
+    const sidebar = document.getElementById('saas-sidebar');
+    const backdrop = document.getElementById('mobile-backdrop');
+    sidebar.classList.toggle('mobile-open');
     backdrop.classList.toggle('active');
 }
 
-function activateNav(linkElem) {
-    const parentSection = linkElem.closest('.nav-section');
-    if (parentSection) {
-        parentSection.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    }
+function activateNav(linkElem, targetViewId) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     linkElem.classList.add('active');
-    // If on mobile, close sidebar
+    
     if (window.innerWidth <= 900) {
-        toggleSidebar();
+        toggleMobileMenu();
     }
 }
 
 // -------------------------------------------------------------
-// Gate Guard Console Functionality
+// Slide-Over Notification Centre Drawer
+// -------------------------------------------------------------
+function toggleNotificationsDrawer() {
+    const drawer = document.getElementById('drawer-notifications');
+    drawer.classList.toggle('hidden');
+    if (!drawer.classList.contains('hidden') && currentUser && currentUser.role === 'student') {
+        loadStudentNotifications();
+    }
+}
+
+// -------------------------------------------------------------
+// Gate Staff Operations (Parcels Management)
 // -------------------------------------------------------------
 async function loadGuardParcels() {
     try {
@@ -154,11 +209,11 @@ async function loadGuardParcels() {
         const data = await res.json();
         if (res.ok) {
             allGuardParcels = data.parcels || [];
-            renderGuardParcels(allGuardParcels);
+            applyCombinedFilters();
             updateGuardKPIs(allGuardParcels);
         }
     } catch (err) {
-        console.error('Failed to load guard parcels:', err);
+        console.error('Failed to load parcels:', err);
     }
 }
 
@@ -166,7 +221,6 @@ function updateGuardKPIs(parcels) {
     const pending = parcels.filter(p => p.status === 'received' || p.status === 'notified').length;
     const collected = parcels.filter(p => p.status === 'collected').length;
     
-    // Count logged today
     const todayStr = new Date().toISOString().slice(0, 10);
     const todayCount = parcels.filter(p => p.received_at && p.received_at.startsWith(todayStr)).length;
 
@@ -174,85 +228,123 @@ function updateGuardKPIs(parcels) {
     document.getElementById('guard-today-count').textContent = todayCount;
     document.getElementById('guard-collected-count').textContent = collected;
 
-    // Sidebar badge
-    const sbBadge = document.getElementById('sidebar-guard-pending-count');
+    const sbBadge = document.getElementById('sidebar-pending-badge');
     if (sbBadge) sbBadge.textContent = pending;
 }
 
-function renderGuardParcels(parcels) {
+// Multi-Criteria Table Filtering
+function applyParcelFilter(status, pillElem) {
+    activeStatusFilter = status;
+    document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
+    if (pillElem) pillElem.classList.add('active');
+    applyCombinedFilters();
+}
+
+function applyCourierFilter(courierName) {
+    activeCourierFilter = courierName;
+    applyCombinedFilters();
+}
+
+function filterGuardTable() {
+    applyCombinedFilters();
+}
+
+function applyCombinedFilters() {
+    const searchVal = (document.getElementById('guard-search-input')?.value || '').toLowerCase().trim();
+
+    let filtered = allGuardParcels.filter(p => {
+        // 1. Status Filter
+        if (activeStatusFilter === 'pending' && !(p.status === 'received' || p.status === 'notified')) return false;
+        if (activeStatusFilter === 'notified' && p.status !== 'notified') return false;
+        if (activeStatusFilter === 'collected' && p.status !== 'collected') return false;
+
+        // 2. Courier Filter
+        if (activeCourierFilter && p.courier_name !== activeCourierFilter) return false;
+
+        // 3. Search Query
+        if (searchVal) {
+            const match = (p.tracking_number && p.tracking_number.toLowerCase().includes(searchVal)) ||
+                          (p.student_name && p.student_name.toLowerCase().includes(searchVal)) ||
+                          (p.student_roll_no && p.student_roll_no.toLowerCase().includes(searchVal)) ||
+                          (p.room_no && p.room_no.toLowerCase().includes(searchVal)) ||
+                          (p.courier_name && p.courier_name.toLowerCase().includes(searchVal));
+            if (!match) return false;
+        }
+
+        return true;
+    });
+
+    renderGuardTable(filtered);
+}
+
+function renderGuardTable(parcels) {
     const tbody = document.getElementById('guard-parcels-tbody');
     tbody.innerHTML = '';
 
     if (!parcels || parcels.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center empty-state">No parcels logged in terminal ledger.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center empty-state">No matching packages found.</td></tr>`;
         return;
     }
 
     parcels.forEach(p => {
         const tr = document.createElement('tr');
 
-        // Waiting time calculation
+        // Waiting Duration
         const recDate = new Date(p.received_at);
         const diffHrs = Math.max(0, Math.round((new Date() - recDate) / (1000 * 60 * 60) * 10) / 10);
 
-        // Status badge
+        // Status Badge Style
         const badgeClass = p.status === 'collected' ? 'badge-collected' : (p.status === 'notified' ? 'badge-notified' : 'badge-received');
         
-        // Photo preview thumbnail
+        // Photo Thumbnail
         const photoHtml = p.photo_url 
-            ? `<img src="${p.photo_url}" class="table-photo-thumb" alt="Parcel Photo" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to view photo">`
-            : `<span style="color:var(--text-muted);font-size:0.75rem;font-family:var(--font-mono);">NONE</span>`;
+            ? `<img src="${p.photo_url}" class="table-photo-thumb" alt="Parcel Photo" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Inspect Photo">`
+            : `<span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted);">NO PHOTO</span>`;
 
-        // Action buttons
+        // Action Buttons
         let actionsHtml = '';
         if (p.status !== 'collected') {
             actionsHtml = `
-                <div style="display:flex;gap:0.4rem;">
-                    <button class="btn btn-primary btn-sm" onclick="openHandoverModal(${p.id})">🔑 Hand Over</button>
+                <div style="display:flex;gap:0.4rem;justify-content:flex-end;">
+                    <button class="btn btn-primary btn-sm" onclick="openHandoverModal(${p.id})">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        <span>Hand Over</span>
+                    </button>
                     <button class="btn btn-secondary btn-sm" onclick="triggerNotify(${p.id})" title="Resend Notification">🔔</button>
                 </div>
             `;
         } else {
-            actionsHtml = `<span class="badge badge-collected">✓ Handed Over</span>`;
+            actionsHtml = `
+                <div style="display:flex;justify-content:flex-end;">
+                    <span class="badge badge-collected">✓ Handed Over</span>
+                </div>
+            `;
         }
 
         tr.innerHTML = `
             <td>
-                <strong>${escapeHtml(p.courier_name)}</strong>
-                <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--orange);margin-top:0.15rem;">${escapeHtml(p.tracking_number)}</div>
+                <div style="font-weight:700;color:var(--text-primary);">${escapeHtml(p.courier_name)}</div>
+                <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--orange-primary);display:flex;align-items:center;gap:0.4rem;margin-top:0.15rem;">
+                    <span>${escapeHtml(p.tracking_number)}</span>
+                    <button class="btn-icon" style="padding:0.1rem 0.3rem;font-size:0.65rem;" onclick="copyToClipboard('${p.tracking_number}', 'Tracking #')">📋</button>
+                </div>
             </td>
             <td>
-                <strong>${escapeHtml(p.student_name)}</strong>
-                <div style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(p.student_roll_no)}</div>
+                <div style="font-weight:700;">${escapeHtml(p.student_name)}</div>
+                <div style="font-family:var(--font-mono);font-size:0.74rem;color:var(--text-muted);">${escapeHtml(p.student_roll_no)}</div>
             </td>
             <td>
                 <div>${escapeHtml(p.hostel_name)} (${escapeHtml(p.hostel_code)})</div>
-                <div style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(p.room_no)}</div>
+                <div style="font-family:var(--font-mono);font-size:0.74rem;color:var(--text-muted);">${escapeHtml(p.room_no)}</div>
             </td>
             <td style="font-family:var(--font-mono);font-size:0.78rem;">${formatDate(p.received_at)}</td>
-            <td style="font-family:var(--font-mono);font-size:0.78rem;">${p.status === 'collected' ? '-' : `${diffHrs} hrs`}</td>
+            <td style="font-family:var(--font-mono);font-size:0.78rem;">${p.status === 'collected' ? '-' : `<span class="kpi-tag tag-orange">${diffHrs} hrs</span>`}</td>
             <td>${photoHtml}</td>
             <td><span class="badge ${badgeClass}">${p.status}</span></td>
             <td>${actionsHtml}</td>
         `;
         tbody.appendChild(tr);
     });
-}
-
-function filterGuardTable() {
-    const q = document.getElementById('guard-search-input').value.toLowerCase().trim();
-    if (!q) {
-        renderGuardParcels(allGuardParcels);
-        return;
-    }
-    const filtered = allGuardParcels.filter(p => {
-        return (p.tracking_number && p.tracking_number.toLowerCase().includes(q)) ||
-               (p.student_name && p.student_name.toLowerCase().includes(q)) ||
-               (p.courier_name && p.courier_name.toLowerCase().includes(q)) ||
-               (p.room_no && p.room_no.toLowerCase().includes(q)) ||
-               (p.student_roll_no && p.student_roll_no.toLowerCase().includes(q));
-    });
-    renderGuardParcels(filtered);
 }
 
 async function loadStudentsDropdown() {
@@ -319,7 +411,7 @@ async function handleLogParcelSubmit(event) {
     event.preventDefault();
     const btn = document.getElementById('btn-submit-parcel');
     btn.disabled = true;
-    btn.querySelector('span').textContent = 'Uploading & Saving...';
+    btn.querySelector('span').textContent = 'Uploading & Logging...';
 
     const studentId = document.getElementById('input-student-select').value;
     const hostelId = document.getElementById('input-hostel-id').value;
@@ -346,13 +438,13 @@ async function handleLogParcelSubmit(event) {
         const data = await res.json();
         if (res.ok) {
             closeModal('modal-log-parcel');
-            showToast(`Parcel logged! One-time code generated and student notified.`, 'success');
+            showToast(`Parcel registered! Single-use OTP generated and student notified.`, 'success');
             loadGuardParcels();
         } else {
             showToast(data.error || 'Failed to log parcel', 'error');
         }
     } catch (err) {
-        showToast('Error uploading parcel to server.', 'error');
+        showToast('Error uploading parcel.', 'error');
     } finally {
         btn.disabled = false;
         btn.querySelector('span').textContent = 'Save & Dispatch Notification';
@@ -364,13 +456,13 @@ async function triggerNotify(parcelId) {
         const res = await fetch(`/api/parcels/${parcelId}/notify`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-            showToast('Notification re-sent to student!', 'success');
+            showToast('Notification alert dispatched to student!', 'success');
             loadGuardParcels();
         } else {
             showToast(data.error || 'Notification failed', 'error');
         }
     } catch (err) {
-        showToast('Network error triggering notification', 'error');
+        showToast('Network error dispatching notification', 'error');
     }
 }
 
@@ -381,7 +473,6 @@ function openHandoverModal(preselectedParcelId = null) {
     const select = document.getElementById('handover-parcel-select');
     select.innerHTML = '<option value="">-- Choose parcel to verify --</option>';
 
-    // Filter pending parcels
     const pending = allGuardParcels.filter(p => p.status === 'received' || p.status === 'notified');
     pending.forEach(p => {
         const opt = document.createElement('option');
@@ -410,9 +501,9 @@ function handleHandoverParcelChange(selectElem) {
 
     if (parcel) {
         summaryBox.innerHTML = `
-            <strong>Recipient:</strong> ${escapeHtml(parcel.student_name)} (${escapeHtml(parcel.student_roll_no)})<br>
-            <strong>Hostel / Room:</strong> ${escapeHtml(parcel.hostel_name)} - ${escapeHtml(parcel.room_no)}<br>
-            <strong>Courier:</strong> ${escapeHtml(parcel.courier_name)} (<span style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(parcel.tracking_number)}</span>)
+            <div><strong>Recipient:</strong> ${escapeHtml(parcel.student_name)} (Roll: ${escapeHtml(parcel.student_roll_no)})</div>
+            <div><strong>Hostel & Room:</strong> ${escapeHtml(parcel.hostel_name)} — Room ${escapeHtml(parcel.room_no)}</div>
+            <div><strong>Courier:</strong> ${escapeHtml(parcel.courier_name)} (<span style="color:var(--orange-primary);font-family:var(--font-mono);">${escapeHtml(parcel.tracking_number)}</span>)</div>
         `;
         summaryBox.classList.remove('hidden');
     } else {
@@ -428,7 +519,7 @@ async function handleHandoverSubmit(event) {
     const btn = document.getElementById('btn-submit-handover');
 
     if (!parcelId || !otp) {
-        showToast('Please select parcel and enter the 6-digit OTP.', 'error');
+        showToast('Please select parcel and input the 6-digit passcode.', 'error');
         return;
     }
 
@@ -445,13 +536,13 @@ async function handleHandoverSubmit(event) {
 
         if (res.ok) {
             closeModal('modal-handover');
-            showToast('✓ OTP Verified! Handover transaction recorded and parcel released.', 'success');
+            showToast('✓ OTP Verified! Transaction committed and package released.', 'success');
             loadGuardParcels();
         } else {
-            showToast(data.error || 'Handover verification failed', 'error');
+            showToast(data.error || 'Verification failed', 'error');
         }
     } catch (err) {
-        showToast('Network error executing handover transaction.', 'error');
+        showToast('Error executing handover transaction.', 'error');
     } finally {
         btn.disabled = false;
         btn.querySelector('span').textContent = 'Verify & Release Parcel';
@@ -459,7 +550,7 @@ async function handleHandoverSubmit(event) {
 }
 
 // -------------------------------------------------------------
-// Student Portal Deliveries & OTP Display
+// Student Portal Deliveries & Passcode Tracking
 // -------------------------------------------------------------
 async function loadStudentDeliveries() {
     try {
@@ -477,8 +568,15 @@ function renderStudentParcels(parcels) {
     const container = document.getElementById('student-parcels-list');
     container.innerHTML = '';
 
+    const pendingParcels = parcels.filter(p => p.status !== 'collected');
+    const studentActiveCountElem = document.getElementById('student-active-count');
+    const sidebarStudentBadge = document.getElementById('sidebar-student-badge');
+    
+    if (studentActiveCountElem) studentActiveCountElem.textContent = pendingParcels.length;
+    if (sidebarStudentBadge) sidebarStudentBadge.textContent = pendingParcels.length;
+
     if (!parcels || parcels.length === 0) {
-        container.innerHTML = `<div class="empty-state">No parcels registered for your room yet.</div>`;
+        container.innerHTML = `<div class="empty-state">No shipments registered for your room yet.</div>`;
         return;
     }
 
@@ -489,39 +587,39 @@ function renderStudentParcels(parcels) {
         const isCollected = p.status === 'collected';
         const isNotified = p.status === 'notified';
 
-        // Stepper state
         const s1Active = 'completed';
         const s2Active = isNotified || isCollected ? 'completed' : 'active';
         const s3Active = isCollected ? 'completed' : '';
 
-        // Dynamic OTP display or handover confirmation
         let otpSection = '';
         if (!isCollected) {
             otpSection = `
                 <div class="otp-showcase">
-                    <div class="otp-box-left">
-                        <span class="otp-tag">COLLECTION PASSCODE (SHOW AT GATE)</span>
+                    <div>
+                        <div class="otp-tag">COLLECTION PASSCODE</div>
                         <div class="otp-digits" id="otp-display-${p.id}">••••••</div>
-                        <span class="otp-expiry" id="otp-timer-${p.id}">Single-use cryptographic hash</span>
+                        <div class="otp-expiry" id="otp-timer-${p.id}">Single-use SHA-256 hash</div>
                     </div>
                     <div>
-                        <button class="btn btn-primary btn-sm" onclick="requestStudentOtp(${p.id})">🔑 View / Refresh OTP</button>
+                        <button class="btn btn-primary" onclick="requestStudentOtp(${p.id})">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                            <span>Reveal / Refresh OTP</span>
+                        </button>
                     </div>
                 </div>
             `;
         } else {
             otpSection = `
-                <div style="background:var(--success-subtle);border:1px solid var(--success-border);padding:0.75rem 1rem;border-radius:var(--radius-sm);color:var(--success);font-size:0.84rem;display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);">
+                <div style="background:var(--success-subtle);border:1px solid var(--success-border);padding:0.85rem 1.1rem;border-radius:var(--radius-sm);color:var(--success);font-family:var(--font-mono);font-size:0.84rem;display:flex;align-items:center;gap:0.5rem;">
                     <span>✓ Collected and verified on ${formatDate(p.collected_at || p.handover_time)}</span>
                 </div>
             `;
         }
 
-        // Photo thumbnail
         const photoSection = p.photo_url ? `
-            <div style="margin-top:0.5rem;">
-                <span style="font-size:0.72rem;font-family:var(--font-mono);color:var(--text-muted);display:block;margin-bottom:0.25rem;">PACKAGE PHOTO (AZURE BLOB):</span>
-                <img src="${p.photo_url}" class="table-photo-thumb" style="width:64px;height:64px;" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to view full photo">
+            <div style="margin-top:0.4rem;">
+                <span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">PACKAGE CONDITION (AZURE BLOB):</span>
+                <img src="${p.photo_url}" class="table-photo-thumb" style="width:64px;height:64px;" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to enlarge">
             </div>
         ` : '';
 
@@ -529,8 +627,10 @@ function renderStudentParcels(parcels) {
             <div class="parcel-top">
                 <div>
                     <div class="parcel-title">${escapeHtml(p.courier_name)}</div>
-                    <div class="parcel-meta">Tracking: <strong style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(p.tracking_number)}</strong> | Received: ${formatDate(p.received_at)}</div>
-                    ${p.remarks ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">Note: ${escapeHtml(p.remarks)}</div>` : ''}
+                    <div class="parcel-meta">
+                        Tracking: <strong style="color:var(--orange-primary);font-family:var(--font-mono);">${escapeHtml(p.tracking_number)}</strong> | Received: ${formatDate(p.received_at)}
+                    </div>
+                    ${p.remarks ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.25rem;">Note: ${escapeHtml(p.remarks)}</div>` : ''}
                 </div>
                 <span class="badge ${isCollected ? 'badge-collected' : 'badge-notified'}">${p.status}</span>
             </div>
@@ -571,7 +671,7 @@ async function requestStudentOtp(parcelId) {
                 elem.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
             }
             startOtpCountdown(parcelId, data.otp_data.otp_expiry);
-            showToast('Fresh OTP generated and hashed with SHA-256 in database.', 'success');
+            showToast('Passcode generated! Show code to gate staff.', 'success');
         } else {
             showToast(data.error || 'Failed to generate OTP', 'error');
         }
@@ -617,38 +717,37 @@ async function loadStudentNotifications() {
         const res = await fetch('/api/notifications');
         const data = await res.json();
         if (res.ok) {
-            const feed = document.getElementById('student-notifications-feed');
-            feed.innerHTML = '';
             const notifs = data.notifications || [];
-
-            if (notifs.length === 0) {
-                feed.innerHTML = `<div class="empty-state">No notifications.</div>`;
-                return;
-            }
-
-            notifs.forEach(n => {
-                const card = document.createElement('div');
-                card.className = 'notif-card';
-                card.onclick = () => viewJsonPayload(n.payload);
-
-                card.innerHTML = `
-                    <div class="notif-card-header">
-                        <span>📦 ${escapeHtml(n.courier_name)} Arrived</span>
-                        <span class="notif-time">${formatDate(n.sent_at)}</span>
-                    </div>
-                    <p style="color:var(--text-secondary);font-size:0.8rem;">
-                        ${n.payload && n.payload.message ? escapeHtml(n.payload.message) : `Parcel ${n.tracking_number} received.`}
-                    </p>
-                    <div style="font-size:0.72rem;color:var(--orange);margin-top:0.4rem;font-weight:700;font-family:var(--font-mono);">
-                        🔍 Click to view DP-900 JSON Document
-                    </div>
-                `;
-                feed.appendChild(card);
-            });
+            renderNotificationFeeds(notifs);
         }
     } catch (err) {
         console.error('Failed to load notifications:', err);
     }
+}
+
+function renderNotificationFeeds(notifs) {
+    const mainFeed = document.getElementById('student-notifications-feed');
+    const drawerFeed = document.getElementById('drawer-notif-content');
+
+    const htmlContent = notifs.length === 0 
+        ? `<div class="empty-state">No notifications.</div>`
+        : notifs.map(n => `
+            <div class="notif-card" onclick="viewJsonPayload(${escapeJsonArg(n.payload)})">
+                <div class="notif-card-header">
+                    <span>📦 ${escapeHtml(n.courier_name)} Arrived</span>
+                    <span class="notif-time">${formatDate(n.sent_at)}</span>
+                </div>
+                <p style="color:var(--text-secondary);font-size:0.82rem;">
+                    ${n.payload && n.payload.message ? escapeHtml(n.payload.message) : `Parcel ${n.tracking_number} received.`}
+                </p>
+                <div style="font-size:0.72rem;color:var(--orange-primary);margin-top:0.4rem;font-weight:700;font-family:var(--font-mono);">
+                    🔍 View DP-900 JSON Document
+                </div>
+            </div>
+        `).join('');
+
+    if (mainFeed) mainFeed.innerHTML = htmlContent;
+    if (drawerFeed) drawerFeed.innerHTML = htmlContent;
 }
 
 // -------------------------------------------------------------
@@ -665,7 +764,6 @@ async function loadWardenDashboard() {
             document.getElementById('warden-collected-parcels').textContent = summary.collected_parcels || 0;
             document.getElementById('warden-avg-time').textContent = `${summary.avg_pickup_hours || 0} hrs`;
 
-            // Render Hostel breakdown bars
             renderHostelDistribution(summary.pending_by_hostel || []);
         }
     } catch (err) {
@@ -678,7 +776,7 @@ function renderHostelDistribution(hostels) {
     container.innerHTML = '';
 
     if (!hostels || hostels.length === 0) {
-        container.innerHTML = '<div class="empty-state">No hostel data available.</div>';
+        container.innerHTML = '<div class="empty-state">No hostel distribution data available.</div>';
         return;
     }
 
@@ -693,10 +791,10 @@ function renderHostelDistribution(hostels) {
         item.innerHTML = `
             <div class="dist-bar-header">
                 <span>${escapeHtml(h.hostel_name)} (${escapeHtml(h.hostel_code)})</span>
-                <span style="color:var(--orange);font-family:var(--font-mono);font-weight:700;">${count} parcels</span>
+                <span style="color:var(--orange-primary);font-family:var(--font-mono);font-weight:700;">${count} parcels</span>
             </div>
             <div class="dist-bar-track">
-                <div class="dist-bar-fill" style="width: ${Math.max(percentage, 5)}%"></div>
+                <div class="dist-bar-fill" style="width: ${Math.max(percentage, 6)}%"></div>
             </div>
         `;
         container.appendChild(item);
@@ -721,11 +819,11 @@ async function loadAuditLogs() {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-family:var(--font-mono);font-size:0.75rem;">${formatDate(l.created_at)}</td>
-                    <td><strong style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(l.action)}</strong></td>
+                    <td><strong style="color:var(--orange-primary);font-family:var(--font-mono);">${escapeHtml(l.action)}</strong></td>
                     <td>${escapeHtml(l.full_name || l.username || 'System')}</td>
-                    <td><span class="role-badge ${l.role || 'guard'}">${escapeHtml(l.role || 'system')}</span></td>
+                    <td><span class="kpi-tag tag-blue">${escapeHtml(l.role || 'system')}</span></td>
                     <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">${escapeHtml(l.ip_address || '127.0.0.1')}</td>
-                    <td style="font-size:0.8rem;color:var(--text-secondary);max-width:300px;word-break:break-all;">${escapeHtml(l.details || '-')}</td>
+                    <td style="font-size:0.8rem;color:var(--text-secondary);max-width:320px;word-break:break-all;">${escapeHtml(l.details || '-')}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -736,8 +834,14 @@ async function loadAuditLogs() {
 }
 
 // -------------------------------------------------------------
-// Modals, Photo Viewer & JSON Payloads
+// Utilities, Modals & Photo Viewer
 // -------------------------------------------------------------
+function copyToClipboard(text, label = 'Code') {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`${label} copied to clipboard!`, 'info');
+    });
+}
+
 function viewPhoto(url, title = 'Parcel Photo') {
     document.getElementById('image-modal-title').textContent = `Package Condition (${title})`;
     document.getElementById('image-modal-img').src = url;
@@ -762,8 +866,8 @@ function showToast(message, type = 'info') {
     container.appendChild(toast);
     setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.4s';
-        setTimeout(() => toast.remove(), 400);
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
     }, 4000);
 }
 
@@ -790,4 +894,9 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function escapeJsonArg(obj) {
+    if (!obj) return '{}';
+    return JSON.stringify(obj).replace(/"/g, '&quot;');
 }
