@@ -1,5 +1,6 @@
 /**
  * ParcelDesk - Frontend Application Logic
+ * Theme: Carbon + Signal Orange (Industrial Logistics Management)
  * Integrates 3-Tier Architecture, RBAC, OTP Handover, and Analytics
  */
 
@@ -41,22 +42,37 @@ function setUserState(user) {
 
     const rolePill = document.getElementById('user-role-pill');
     rolePill.textContent = user.role.toUpperCase();
-    rolePill.className = `role-pill ${user.role}`;
+    rolePill.className = `role-badge ${user.role}`;
 
     document.getElementById('user-display-name').textContent = user.full_name;
+
+    // Update Sidebar role indicator
+    const sidebarRoleText = document.getElementById('sidebar-role-name');
+    const topbarContextTitle = document.getElementById('topbar-context-title');
 
     // Hide all role views first
     document.getElementById('guard-view').classList.add('hidden');
     document.getElementById('student-view').classList.add('hidden');
     document.getElementById('warden-view').classList.add('hidden');
 
+    // Hide all sidebar nav sections
+    document.getElementById('sidebar-section-guard').classList.add('hidden');
+    document.getElementById('sidebar-section-student').classList.add('hidden');
+    document.getElementById('sidebar-section-warden').classList.add('hidden');
+
     // Display view matching user role
     if (user.role === 'guard') {
         document.getElementById('guard-view').classList.remove('hidden');
+        document.getElementById('sidebar-section-guard').classList.remove('hidden');
+        if (sidebarRoleText) sidebarRoleText.textContent = 'GATE STAFF';
+        if (topbarContextTitle) topbarContextTitle.textContent = 'GATE OPERATIONS CONSOLE';
         loadGuardParcels();
         loadStudentsDropdown();
     } else if (user.role === 'student') {
         document.getElementById('student-view').classList.remove('hidden');
+        document.getElementById('sidebar-section-student').classList.remove('hidden');
+        if (sidebarRoleText) sidebarRoleText.textContent = 'STUDENT RESIDENT';
+        if (topbarContextTitle) topbarContextTitle.textContent = 'STUDENT DELIVERY PORTAL';
         document.getElementById('student-portal-name').textContent = user.full_name;
         if (user.student_profile) {
             document.getElementById('student-portal-details').textContent = 
@@ -66,6 +82,9 @@ function setUserState(user) {
         loadStudentNotifications();
     } else if (user.role === 'warden' || user.role === 'admin') {
         document.getElementById('warden-view').classList.remove('hidden');
+        document.getElementById('sidebar-section-warden').classList.remove('hidden');
+        if (sidebarRoleText) sidebarRoleText.textContent = user.role === 'admin' ? 'SYSTEM ADMIN' : 'CHIEF WARDEN';
+        if (topbarContextTitle) topbarContextTitle.textContent = 'LOGISTICS ANALYTICS & AUDIT';
         loadWardenDashboard();
         loadAuditLogs();
     }
@@ -80,7 +99,7 @@ async function demoLogin(username, password) {
         });
         const data = await res.json();
         if (res.ok) {
-            showToast(`Signed in as ${data.user.full_name} (${data.user.role})`, 'success');
+            showToast(`Switched persona to ${data.user.full_name} (${data.user.role})`, 'success');
             setUserState(data.user);
         } else {
             showToast(data.error || 'Login failed', 'error');
@@ -96,11 +115,33 @@ async function handleLogout() {
         currentUser = null;
         document.getElementById('auth-logged-in').classList.add('hidden');
         document.getElementById('auth-logged-out').classList.remove('hidden');
-        showToast('Logged out successfully.', 'info');
+        showToast('Signed out of terminal.', 'info');
         // Switch back to guard demo
         demoLogin('guard1', 'guard123');
     } catch (err) {
         console.error('Logout error:', err);
+    }
+}
+
+// -------------------------------------------------------------
+// Sidebar & Navigation Controls
+// -------------------------------------------------------------
+function toggleSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    sidebar.classList.toggle('open');
+    backdrop.classList.toggle('active');
+}
+
+function activateNav(linkElem) {
+    const parentSection = linkElem.closest('.nav-section');
+    if (parentSection) {
+        parentSection.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    }
+    linkElem.classList.add('active');
+    // If on mobile, close sidebar
+    if (window.innerWidth <= 900) {
+        toggleSidebar();
     }
 }
 
@@ -132,6 +173,10 @@ function updateGuardKPIs(parcels) {
     document.getElementById('guard-pending-count').textContent = pending;
     document.getElementById('guard-today-count').textContent = todayCount;
     document.getElementById('guard-collected-count').textContent = collected;
+
+    // Sidebar badge
+    const sbBadge = document.getElementById('sidebar-guard-pending-count');
+    if (sbBadge) sbBadge.textContent = pending;
 }
 
 function renderGuardParcels(parcels) {
@@ -139,7 +184,7 @@ function renderGuardParcels(parcels) {
     tbody.innerHTML = '';
 
     if (!parcels || parcels.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="padding:2rem;">No parcels logged yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center empty-state">No parcels logged in terminal ledger.</td></tr>`;
         return;
     }
 
@@ -155,37 +200,37 @@ function renderGuardParcels(parcels) {
         
         // Photo preview thumbnail
         const photoHtml = p.photo_url 
-            ? `<img src="${p.photo_url}" class="table-photo-thumb" alt="Parcel Photo" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to enlarge">`
-            : `<span style="color:var(--text-muted);font-size:0.75rem;">No Photo</span>`;
+            ? `<img src="${p.photo_url}" class="table-photo-thumb" alt="Parcel Photo" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to view photo">`
+            : `<span style="color:var(--text-muted);font-size:0.75rem;font-family:var(--font-mono);">NONE</span>`;
 
         // Action buttons
         let actionsHtml = '';
         if (p.status !== 'collected') {
             actionsHtml = `
                 <div style="display:flex;gap:0.4rem;">
-                    <button class="btn btn-emerald btn-sm" onclick="openHandoverModal(${p.id})">🔑 Hand Over</button>
-                    <button class="btn btn-outline btn-sm" onclick="triggerNotify(${p.id})" title="Resend Notification">🔔</button>
+                    <button class="btn btn-primary btn-sm" onclick="openHandoverModal(${p.id})">🔑 Hand Over</button>
+                    <button class="btn btn-secondary btn-sm" onclick="triggerNotify(${p.id})" title="Resend Notification">🔔</button>
                 </div>
             `;
         } else {
-            actionsHtml = `<span style="color:var(--emerald);font-size:0.75rem;font-weight:600;">✓ Handed Over</span>`;
+            actionsHtml = `<span class="badge badge-collected">✓ Handed Over</span>`;
         }
 
         tr.innerHTML = `
             <td>
                 <strong>${escapeHtml(p.courier_name)}</strong>
-                <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">${escapeHtml(p.tracking_number)}</div>
+                <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--orange);margin-top:0.15rem;">${escapeHtml(p.tracking_number)}</div>
             </td>
             <td>
                 <strong>${escapeHtml(p.student_name)}</strong>
-                <div style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(p.student_roll_no)}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(p.student_roll_no)}</div>
             </td>
             <td>
                 <div>${escapeHtml(p.hostel_name)} (${escapeHtml(p.hostel_code)})</div>
-                <div style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(p.room_no)}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono);">${escapeHtml(p.room_no)}</div>
             </td>
-            <td>${formatDate(p.received_at)}</td>
-            <td>${p.status === 'collected' ? '-' : `${diffHrs} hrs ago`}</td>
+            <td style="font-family:var(--font-mono);font-size:0.78rem;">${formatDate(p.received_at)}</td>
+            <td style="font-family:var(--font-mono);font-size:0.78rem;">${p.status === 'collected' ? '-' : `${diffHrs} hrs`}</td>
             <td>${photoHtml}</td>
             <td><span class="badge ${badgeClass}">${p.status}</span></td>
             <td>${actionsHtml}</td>
@@ -367,7 +412,7 @@ function handleHandoverParcelChange(selectElem) {
         summaryBox.innerHTML = `
             <strong>Recipient:</strong> ${escapeHtml(parcel.student_name)} (${escapeHtml(parcel.student_roll_no)})<br>
             <strong>Hostel / Room:</strong> ${escapeHtml(parcel.hostel_name)} - ${escapeHtml(parcel.room_no)}<br>
-            <strong>Courier:</strong> ${escapeHtml(parcel.courier_name)} (${escapeHtml(parcel.tracking_number)})
+            <strong>Courier:</strong> ${escapeHtml(parcel.courier_name)} (<span style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(parcel.tracking_number)}</span>)
         `;
         summaryBox.classList.remove('hidden');
     } else {
@@ -433,7 +478,7 @@ function renderStudentParcels(parcels) {
     container.innerHTML = '';
 
     if (!parcels || parcels.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="padding:2rem;text-align:center;color:var(--text-muted);">No parcels registered for your room yet.</div>`;
+        container.innerHTML = `<div class="empty-state">No parcels registered for your room yet.</div>`;
         return;
     }
 
@@ -452,13 +497,12 @@ function renderStudentParcels(parcels) {
         // Dynamic OTP display or handover confirmation
         let otpSection = '';
         if (!isCollected) {
-            // Check if we have demo OTP or need to regenerate
             otpSection = `
                 <div class="otp-showcase">
                     <div class="otp-box-left">
-                        <span class="otp-tag">Collection OTP (Show to Guard)</span>
+                        <span class="otp-tag">COLLECTION PASSCODE (SHOW AT GATE)</span>
                         <div class="otp-digits" id="otp-display-${p.id}">••••••</div>
-                        <span class="otp-expiry" id="otp-timer-${p.id}">Single-use hashed code</span>
+                        <span class="otp-expiry" id="otp-timer-${p.id}">Single-use cryptographic hash</span>
                     </div>
                     <div>
                         <button class="btn btn-primary btn-sm" onclick="requestStudentOtp(${p.id})">🔑 View / Refresh OTP</button>
@@ -467,7 +511,7 @@ function renderStudentParcels(parcels) {
             `;
         } else {
             otpSection = `
-                <div style="background:var(--emerald-light);border:1px solid rgba(16,185,129,0.3);padding:0.75rem 1rem;border-radius:var(--radius-md);color:#34d399;font-size:0.85rem;display:flex;align-items:center;gap:0.5rem;">
+                <div style="background:var(--success-subtle);border:1px solid var(--success-border);padding:0.75rem 1rem;border-radius:var(--radius-sm);color:var(--success);font-size:0.84rem;display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);">
                     <span>✓ Collected and verified on ${formatDate(p.collected_at || p.handover_time)}</span>
                 </div>
             `;
@@ -476,8 +520,8 @@ function renderStudentParcels(parcels) {
         // Photo thumbnail
         const photoSection = p.photo_url ? `
             <div style="margin-top:0.5rem;">
-                <span style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:0.25rem;">Package Condition Photo:</span>
-                <img src="${p.photo_url}" class="table-photo-thumb" style="width:60px;height:60px;" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to view full photo">
+                <span style="font-size:0.72rem;font-family:var(--font-mono);color:var(--text-muted);display:block;margin-bottom:0.25rem;">PACKAGE PHOTO (AZURE BLOB):</span>
+                <img src="${p.photo_url}" class="table-photo-thumb" style="width:64px;height:64px;" onclick="viewPhoto('${p.photo_url}', '${p.tracking_number}')" title="Click to view full photo">
             </div>
         ` : '';
 
@@ -485,7 +529,7 @@ function renderStudentParcels(parcels) {
             <div class="parcel-top">
                 <div>
                     <div class="parcel-title">${escapeHtml(p.courier_name)}</div>
-                    <div class="parcel-meta">Tracking: <strong>${escapeHtml(p.tracking_number)}</strong> | Received: ${formatDate(p.received_at)}</div>
+                    <div class="parcel-meta">Tracking: <strong style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(p.tracking_number)}</strong> | Received: ${formatDate(p.received_at)}</div>
                     ${p.remarks ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">Note: ${escapeHtml(p.remarks)}</div>` : ''}
                 </div>
                 <span class="badge ${isCollected ? 'badge-collected' : 'badge-notified'}">${p.status}</span>
@@ -527,7 +571,7 @@ async function requestStudentOtp(parcelId) {
                 elem.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
             }
             startOtpCountdown(parcelId, data.otp_data.otp_expiry);
-            showToast('Fresh OTP generated and hashed in database.', 'success');
+            showToast('Fresh OTP generated and hashed with SHA-256 in database.', 'success');
         } else {
             showToast(data.error || 'Failed to generate OTP', 'error');
         }
@@ -554,13 +598,13 @@ function startOtpCountdown(parcelId, expiryStr) {
 
         if (distance <= 0) {
             timerElem.textContent = 'Expired. Please refresh.';
-            timerElem.style.color = '#ef4444';
+            timerElem.style.color = 'var(--error)';
             clearInterval(timerIntervals[parcelId]);
         } else {
             const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
             const seconds = Math.floor((distance % (1000 * 60)) / 1000);
             timerElem.textContent = `Expires in ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-            timerElem.style.color = '#fbbf24';
+            timerElem.style.color = 'var(--warning)';
         }
     };
 
@@ -578,7 +622,7 @@ async function loadStudentNotifications() {
             const notifs = data.notifications || [];
 
             if (notifs.length === 0) {
-                feed.innerHTML = `<div class="empty-state" style="padding:1rem;color:var(--text-muted);font-size:0.8rem;">No notifications.</div>`;
+                feed.innerHTML = `<div class="empty-state">No notifications.</div>`;
                 return;
             }
 
@@ -595,7 +639,7 @@ async function loadStudentNotifications() {
                     <p style="color:var(--text-secondary);font-size:0.8rem;">
                         ${n.payload && n.payload.message ? escapeHtml(n.payload.message) : `Parcel ${n.tracking_number} received.`}
                     </p>
-                    <div style="font-size:0.72rem;color:var(--primary);margin-top:0.4rem;font-weight:600;">
+                    <div style="font-size:0.72rem;color:var(--orange);margin-top:0.4rem;font-weight:700;font-family:var(--font-mono);">
                         🔍 Click to view DP-900 JSON Document
                     </div>
                 `;
@@ -634,7 +678,7 @@ function renderHostelDistribution(hostels) {
     container.innerHTML = '';
 
     if (!hostels || hostels.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No hostel data available.</div>';
+        container.innerHTML = '<div class="empty-state">No hostel data available.</div>';
         return;
     }
 
@@ -649,7 +693,7 @@ function renderHostelDistribution(hostels) {
         item.innerHTML = `
             <div class="dist-bar-header">
                 <span>${escapeHtml(h.hostel_name)} (${escapeHtml(h.hostel_code)})</span>
-                <span style="color:#60a5fa;font-weight:700;">${count} parcels</span>
+                <span style="color:var(--orange);font-family:var(--font-mono);font-weight:700;">${count} parcels</span>
             </div>
             <div class="dist-bar-track">
                 <div class="dist-bar-fill" style="width: ${Math.max(percentage, 5)}%"></div>
@@ -669,7 +713,7 @@ async function loadAuditLogs() {
             const logs = data.audit_logs || [];
 
             if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No audit records found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center empty-state">No audit records found.</td></tr>';
                 return;
             }
 
@@ -677,9 +721,9 @@ async function loadAuditLogs() {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-family:var(--font-mono);font-size:0.75rem;">${formatDate(l.created_at)}</td>
-                    <td><strong style="color:#a78bfa;">${escapeHtml(l.action)}</strong></td>
+                    <td><strong style="color:var(--orange);font-family:var(--font-mono);">${escapeHtml(l.action)}</strong></td>
                     <td>${escapeHtml(l.full_name || l.username || 'System')}</td>
-                    <td><span class="role-pill ${l.role || 'guard'}">${escapeHtml(l.role || 'system')}</span></td>
+                    <td><span class="role-badge ${l.role || 'guard'}">${escapeHtml(l.role || 'system')}</span></td>
                     <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">${escapeHtml(l.ip_address || '127.0.0.1')}</td>
                     <td style="font-size:0.8rem;color:var(--text-secondary);max-width:300px;word-break:break-all;">${escapeHtml(l.details || '-')}</td>
                 `;

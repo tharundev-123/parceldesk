@@ -3,308 +3,483 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParcelDesk — Secure Hostel Parcel Management</title>
+    <title>ParcelDesk — Industrial Logistics Management</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <!-- Google Fonts for sleek modern typography -->
+    <!-- Modern Technical Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
-    <!-- Top Navigation Bar -->
-    <header class="navbar">
-        <div class="nav-brand">
-            <div class="brand-icon">📦</div>
-            <div class="brand-text">
-                <span class="brand-title">ParcelDesk</span>
-                <span class="brand-subtitle">Smart Hostel Logistics & Secure OTP Handover</span>
-            </div>
-        </div>
+<body class="carbon-theme">
 
-        <div class="nav-architecture-tags">
-            <span class="tag tag-azure">Azure SQL (DP-900)</span>
-            <span class="tag tag-blob">Blob Storage</span>
-            <span class="tag tag-security">Hashed OTP Handover</span>
-        </div>
-
-        <div class="nav-user-control">
-            <div id="auth-logged-out" class="auth-box">
-                <button class="btn btn-primary btn-sm" onclick="showLoginModal()">Sign In</button>
-            </div>
-            <div id="auth-logged-in" class="auth-box hidden">
-                <div class="user-badge">
-                    <span id="user-role-pill" class="role-pill">GUARD</span>
-                    <span id="user-display-name" class="user-name">Loading...</span>
+    <div class="app-layout">
+        <!-- ============================================================= -->
+        <!-- SIDEBAR NAVIGATION (Industrial Dark + Signal Orange Accent) -->
+        <!-- ============================================================= -->
+        <aside class="app-sidebar" id="app-sidebar">
+            <!-- Sidebar Header / Brand -->
+            <div class="sidebar-header">
+                <div class="brand-lockup">
+                    <div class="brand-icon-box">
+                        <span class="brand-icon">📦</span>
+                        <span class="status-indicator-dot" title="System Operational"></span>
+                    </div>
+                    <div class="brand-meta">
+                        <span class="brand-title">PARCEL<span class="text-orange">DESK</span></span>
+                        <span class="brand-sub">LOGISTICS TERMINAL</span>
+                    </div>
                 </div>
-                <button class="btn btn-outline btn-sm" onclick="handleLogout()">Sign Out</button>
+                <button class="sidebar-close-btn" onclick="toggleSidebar()" aria-label="Close Sidebar">&times;</button>
             </div>
-        </div>
-    </header>
 
-    <!-- Demo Role Switcher Bar (Convenient quick-testing bar) -->
-    <section class="demo-bar">
-        <div class="demo-title">⚡ Instant Demo Switcher:</div>
-        <div class="demo-buttons">
-            <button class="btn-demo" onclick="demoLogin('guard1', 'guard123')">👮 Gate Guard (Rajesh)</button>
-            <button class="btn-demo" onclick="demoLogin('student1', 'student123')">🎓 Student 1 (Rahul - BH-1)</button>
-            <button class="btn-demo" onclick="demoLogin('student2', 'student123')">🎓 Student 2 (Priya - GH-1)</button>
-            <button class="btn-demo" onclick="demoLogin('warden1', 'warden123')">🏛️ Hostel Warden (Dr. Sharma)</button>
-            <button class="btn-demo" onclick="demoLogin('admin', 'admin123')">⚙️ System Admin</button>
-        </div>
-    </section>
-
-    <!-- Main Content Container -->
-    <main class="main-container">
-        
-        <!-- Toast Notification Area -->
-        <div id="toast-container" class="toast-container"></div>
-
-        <!-- ================================================================= -->
-        <!-- VIEW 1: GATE GUARD DASHBOARD -->
-        <!-- ================================================================= -->
-        <section id="guard-view" class="role-view hidden">
-            <div class="view-header">
-                <div>
-                    <h2>Gate Staff Operations Console</h2>
-                    <p class="subtitle">Log arriving courier packages, trigger instant notifications, and verify student collection OTPs.</p>
+            <!-- Role Status Banner -->
+            <div class="sidebar-role-card">
+                <div class="role-label">OPERATING AS</div>
+                <div class="role-display" id="sidebar-role-display">
+                    <span class="role-dot"></span>
+                    <span id="sidebar-role-name">GATE STAFF</span>
                 </div>
-                <div class="action-group">
-                    <button class="btn btn-primary" onclick="openLogParcelModal()">
-                        <span class="icon">➕</span> Log Incoming Parcel
+            </div>
+
+            <!-- Dynamic Role Navigation -->
+            <nav class="sidebar-nav">
+                <!-- 1. Guard Operations -->
+                <div class="nav-section" id="sidebar-section-guard">
+                    <div class="nav-section-title">GATE OPERATIONS</div>
+                    <a href="#guard-view" class="nav-link active" onclick="activateNav(this)">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-label">Parcels Queue</span>
+                        <span class="nav-count" id="sidebar-guard-pending-count">0</span>
+                    </a>
+                    <button type="button" class="nav-link" onclick="openLogParcelModal()">
+                        <span class="nav-icon">➕</span>
+                        <span class="nav-label">Log Incoming Parcel</span>
                     </button>
-                    <button class="btn btn-secondary" onclick="openHandoverModal()">
-                        <span class="icon">🔑</span> Verify & Hand Over OTP
+                    <button type="button" class="nav-link" onclick="openHandoverModal()">
+                        <span class="nav-icon">🔑</span>
+                        <span class="nav-label">Verify Handover (OTP)</span>
                     </button>
                 </div>
-            </div>
 
-            <!-- Guard Stat Summary Cards -->
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-label">Pending Collection</div>
-                    <div class="metric-value text-amber" id="guard-pending-count">0</div>
-                    <div class="metric-sub">Parcels at gate waiting for pickup</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Logged Today</div>
-                    <div class="metric-value text-blue" id="guard-today-count">0</div>
-                    <div class="metric-sub">Incoming shipments processed today</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Completed Handovers</div>
-                    <div class="metric-value text-emerald" id="guard-collected-count">0</div>
-                    <div class="metric-sub">Verified collections on record</div>
-                </div>
-            </div>
-
-            <!-- Guard Pending Parcels Table -->
-            <div class="card table-card">
-                <div class="card-header">
-                    <h3>Active Parcels at Hostel Gate</h3>
-                    <div class="card-tools">
-                        <input type="text" id="guard-search-input" placeholder="Search tracking #, student, room..." class="input-search" oninput="filterGuardTable()">
-                        <button class="btn btn-icon" title="Refresh list" onclick="loadGuardParcels()">🔄</button>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Parcel / Courier</th>
-                                <th>Student Recipient</th>
-                                <th>Hostel & Room</th>
-                                <th>Received Time</th>
-                                <th>Waiting Time</th>
-                                <th>Photo</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="guard-parcels-tbody">
-                            <tr><td colspan="8" class="text-center">Loading parcels...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- ================================================================= -->
-        <!-- VIEW 2: STUDENT PORTAL -->
-        <!-- ================================================================= -->
-        <section id="student-view" class="role-view hidden">
-            <div class="view-header">
-                <div>
-                    <h2>Student Delivery Portal</h2>
-                    <p class="subtitle">Track your incoming shipments, view parcel condition photos, and present your secure OTP to gate staff.</p>
-                </div>
-                <div class="student-profile-chip" id="student-chip">
-                    <span class="chip-avatar">🎓</span>
-                    <div>
-                        <strong id="student-portal-name">Student Name</strong>
-                        <div class="chip-sub" id="student-portal-details">Roll No: 2024CS101 | Room 204 | BH-1</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Student Parcels Section -->
-            <div class="student-grid">
-                <div class="student-main-col">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>My Deliveries</h3>
-                            <button class="btn btn-outline btn-sm" onclick="loadStudentDeliveries()">🔄 Refresh</button>
-                        </div>
-                        <div id="student-parcels-list" class="parcels-stack">
-                            <div class="empty-state">Loading your shipments...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Side: Notification Stream & Instructions -->
-                <div class="student-side-col">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>📱 In-App Notifications</h3>
-                        </div>
-                        <div id="student-notifications-feed" class="notifications-feed">
-                            <div class="empty-state">No new alerts.</div>
-                        </div>
-                    </div>
-
-                    <div class="card info-box-card">
-                        <h4>🛡️ How OTP Handover Works</h4>
-                        <ol class="info-steps">
-                            <li>Gate staff logs your incoming parcel and photos its condition.</li>
-                            <li>A single-use 6-digit code is generated and hashed with SHA-256.</li>
-                            <li>Show the OTP to the gate guard when collecting.</li>
-                            <li>The guard enters it into ParcelDesk to release your package.</li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ================================================================= -->
-        <!-- VIEW 3: WARDEN & ADMIN ANALYTICS DASHBOARD -->
-        <!-- ================================================================= -->
-        <section id="warden-view" class="role-view hidden">
-            <div class="view-header">
-                <div>
-                    <h2>Warden & Logistics Analytics</h2>
-                    <p class="subtitle">Comprehensive visibility over parcel volumes, pickup turnaround latency, hostel capacity, and security audits.</p>
-                </div>
-                <div class="action-group">
-                    <a href="/api/analytics/powerbi-export" class="btn btn-accent" download>
-                        <span class="icon">📊</span> Export Power BI Dataset (CSV)
+                <!-- 2. Student Portal -->
+                <div class="nav-section hidden" id="sidebar-section-student">
+                    <div class="nav-section-title">STUDENT PORTAL</div>
+                    <a href="#student-view" class="nav-link active" onclick="activateNav(this)">
+                        <span class="nav-icon">📦</span>
+                        <span class="nav-label">My Deliveries</span>
+                    </a>
+                    <a href="#student-notifications-feed" class="nav-link" onclick="activateNav(this)">
+                        <span class="nav-icon">📱</span>
+                        <span class="nav-label">Arrival Alerts</span>
+                    </a>
+                    <a href="#student-chip" class="nav-link" onclick="activateNav(this)">
+                        <span class="nav-icon">🎓</span>
+                        <span class="nav-label">Student Profile</span>
                     </a>
                 </div>
+
+                <!-- 3. Warden / Admin Analytics -->
+                <div class="nav-section hidden" id="sidebar-section-warden">
+                    <div class="nav-section-title">LOGISTICS ANALYTICS</div>
+                    <a href="#warden-view" class="nav-link active" onclick="activateNav(this)">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-label">Overview & Metrics</span>
+                    </a>
+                    <a href="#hostel-distribution-bars" class="nav-link" onclick="activateNav(this)">
+                        <span class="nav-icon">🏢</span>
+                        <span class="nav-label">Hostel Distribution</span>
+                    </a>
+                    <a href="#audit-logs-tbody" class="nav-link" onclick="activateNav(this)">
+                        <span class="nav-icon">🛡️</span>
+                        <span class="nav-label">Compliance Audit</span>
+                    </a>
+                    <a href="/api/analytics/powerbi-export" class="nav-link" download>
+                        <span class="nav-icon">📈</span>
+                        <span class="nav-label">Export Power BI (CSV)</span>
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Technical Architecture Telemetry Footer -->
+            <div class="sidebar-telemetry">
+                <div class="telemetry-header">SYSTEM TELEMETRY</div>
+                <div class="telemetry-row">
+                    <span class="telemetry-key">AZURE SQL</span>
+                    <span class="telemetry-val text-success">CONNECTED</span>
+                </div>
+                <div class="telemetry-row">
+                    <span class="telemetry-key">BLOB STORAGE</span>
+                    <span class="telemetry-val text-orange">HOT TIER</span>
+                </div>
+                <div class="telemetry-row">
+                    <span class="telemetry-key">SECURITY</span>
+                    <span class="telemetry-val">SHA-256 OTP</span>
+                </div>
             </div>
+        </aside>
 
-            <!-- Warden Analytics KPI Cards -->
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-label">Total Volume Logged</div>
-                    <div class="metric-value text-blue" id="warden-total-parcels">0</div>
-                    <div class="metric-sub">All-time packages received</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Awaiting Pickup</div>
-                    <div class="metric-value text-amber" id="warden-pending-parcels">0</div>
-                    <div class="metric-sub">Currently occupying gate storage</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Successfully Collected</div>
-                    <div class="metric-value text-emerald" id="warden-collected-parcels">0</div>
-                    <div class="metric-sub">Verified handovers completed</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Avg Pickup Turnaround</div>
-                    <div class="metric-value text-purple" id="warden-avg-time">0.0 hrs</div>
-                    <div class="metric-sub">Receipt to verified handover</div>
-                </div>
-            </div>
+        <!-- Sidebar Backdrop for Mobile Screens -->
+        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
 
-            <!-- Middle Row: Hostel Distribution & DP-900 Classification -->
-            <div class="analytics-two-col">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Pending Parcels per Hostel Block</h3>
-                    </div>
-                    <div id="hostel-distribution-bars" class="distribution-bars">
-                        <!-- Rendered dynamically -->
+        <!-- ============================================================= -->
+        <!-- MAIN CONTENT AREA -->
+        <!-- ============================================================= -->
+        <div class="app-main-area">
+            <!-- Top Navigation Header -->
+            <header class="app-topbar">
+                <div class="topbar-left">
+                    <button class="topbar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation">
+                        <span>☰</span>
+                    </button>
+                    <div class="topbar-context">
+                        <span class="context-tag">LOGISTICS OS</span>
+                        <span class="context-slash">/</span>
+                        <span class="context-title" id="topbar-context-title">GATE OPERATIONS CONSOLE</span>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h3>DP-900 Data Architecture Classification</h3>
+                <div class="topbar-right">
+                    <div class="topbar-tags">
+                        <span class="tech-tag tag-sql">Azure SQL (DP-900)</span>
+                        <span class="tech-tag tag-blob">Blob Storage</span>
+                        <span class="tech-tag tag-sec">Hashed OTP</span>
                     </div>
-                    <div class="dp900-matrix">
-                        <div class="dp900-row">
-                            <span class="dp900-type type-structured">Structured Data</span>
-                            <div class="dp900-desc">
-                                <strong>Azure SQL Database (3NF Relational)</strong>
-                                <p>Users, Hostels, Students, Parcels, Handovers, Constraints & Views</p>
+
+                    <div class="topbar-user-section">
+                        <div id="auth-logged-out" class="auth-box">
+                            <button class="btn btn-primary btn-sm" onclick="showLoginModal()">Sign In</button>
+                        </div>
+                        <div id="auth-logged-in" class="auth-box hidden">
+                            <div class="user-chip">
+                                <span id="user-role-pill" class="role-badge guard">GUARD</span>
+                                <span id="user-display-name" class="user-name">Loading...</span>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="handleLogout()">Sign Out</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Instant Demo Persona Switcher Bar -->
+            <section class="demo-switcher-bar">
+                <div class="demo-bar-inner">
+                    <div class="demo-bar-label">
+                        <span class="signal-dot"></span>
+                        <span>SWITCH DEMO PERSONA:</span>
+                    </div>
+                    <div class="demo-btn-group">
+                        <button class="btn-demo" onclick="demoLogin('guard1', 'guard123')">👮 Gate Guard (Rajesh)</button>
+                        <button class="btn-demo" onclick="demoLogin('student1', 'student123')">🎓 Student 1 (Rahul - BH-1)</button>
+                        <button class="btn-demo" onclick="demoLogin('student2', 'student123')">🎓 Student 2 (Priya - GH-1)</button>
+                        <button class="btn-demo" onclick="demoLogin('warden1', 'warden123')">🏛️ Chief Warden (Dr. Sharma)</button>
+                        <button class="btn-demo" onclick="demoLogin('admin', 'admin123')">⚙️ System Admin</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Content Container -->
+            <main class="main-content">
+                <!-- Toast Notification Container -->
+                <div id="toast-container" class="toast-container"></div>
+
+                <!-- ========================================================= -->
+                <!-- VIEW 1: GATE GUARD DASHBOARD -->
+                <!-- ========================================================= -->
+                <section id="guard-view" class="role-view hidden">
+                    <div class="view-header">
+                        <div class="header-content">
+                            <div class="header-pretitle">STATION // GATE SECURITY</div>
+                            <h2>Gate Staff Operations Console</h2>
+                            <p class="subtitle">Log arriving courier packages, trigger instant notifications, and verify student collection OTPs.</p>
+                        </div>
+                        <div class="action-group">
+                            <button class="btn btn-primary" onclick="openLogParcelModal()">
+                                <span class="btn-icon">➕</span> Log Incoming Parcel
+                            </button>
+                            <button class="btn btn-secondary" onclick="openHandoverModal()">
+                                <span class="btn-icon">🔑</span> Verify & Hand Over OTP
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Guard Stat Summary Cards -->
+                    <div class="metrics-grid">
+                        <div class="metric-card card-highlight-orange">
+                            <div class="metric-header">
+                                <span class="metric-label">PENDING COLLECTION</span>
+                                <span class="metric-indicator text-orange">● ACTIVE</span>
+                            </div>
+                            <div class="metric-value text-orange" id="guard-pending-count">0</div>
+                            <div class="metric-sub">Parcels at gate waiting for pickup</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-label">LOGGED TODAY</span>
+                                <span class="metric-indicator">TODAY</span>
+                            </div>
+                            <div class="metric-value" id="guard-today-count">0</div>
+                            <div class="metric-sub">Incoming shipments processed today</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-label">COMPLETED HANDOVERS</span>
+                                <span class="metric-indicator text-success">✓ VERIFIED</span>
+                            </div>
+                            <div class="metric-value text-success" id="guard-collected-count">0</div>
+                            <div class="metric-sub">Verified collections on record</div>
+                        </div>
+                    </div>
+
+                    <!-- Guard Pending Parcels Table -->
+                    <div class="card table-card">
+                        <div class="card-header">
+                            <div class="card-header-left">
+                                <h3>Active Parcels at Hostel Gate</h3>
+                                <span class="section-tag">LIVE LEDGER</span>
+                            </div>
+                            <div class="card-tools">
+                                <div class="search-input-box">
+                                    <span class="search-icon">🔍</span>
+                                    <input type="text" id="guard-search-input" placeholder="Search tracking #, student, room..." class="input-search" oninput="filterGuardTable()">
+                                </div>
+                                <button class="btn btn-icon" title="Refresh list" onclick="loadGuardParcels()">🔄</button>
                             </div>
                         </div>
-                        <div class="dp900-row">
-                            <span class="dp900-type type-semi">Semi-Structured Data</span>
-                            <div class="dp900-desc">
-                                <strong>JSON Payloads in Notification Table</strong>
-                                <p>Dynamic courier delivery events, recipient metadata, and dispatch channels</p>
-                            </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>PARCEL / COURIER</th>
+                                        <th>STUDENT RECIPIENT</th>
+                                        <th>HOSTEL & ROOM</th>
+                                        <th>RECEIVED TIME</th>
+                                        <th>WAITING TIME</th>
+                                        <th>PHOTO</th>
+                                        <th>STATUS</th>
+                                        <th>ACTIONS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="guard-parcels-tbody">
+                                    <tr><td colspan="8" class="text-center">Loading parcels...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="dp900-row">
-                            <span class="dp900-type type-unstructured">Unstructured Data</span>
-                            <div class="dp900-desc">
-                                <strong>Azure Blob Storage</strong>
-                                <p>High-resolution photos of physical parcels and shipping labels</p>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- VIEW 2: STUDENT PORTAL -->
+                <!-- ========================================================= -->
+                <section id="student-view" class="role-view hidden">
+                    <div class="view-header">
+                        <div class="header-content">
+                            <div class="header-pretitle">RECIPIENT // RESIDENT CONSOLE</div>
+                            <h2>Student Delivery Portal</h2>
+                            <p class="subtitle">Track your incoming shipments, view parcel condition photos, and present your secure OTP to gate staff.</p>
+                        </div>
+                        <div class="student-profile-chip" id="student-chip">
+                            <div class="chip-avatar-box">🎓</div>
+                            <div>
+                                <strong id="student-portal-name">Student Name</strong>
+                                <div class="chip-sub" id="student-portal-details">Roll No: 2024CS101 | Room 204 | BH-1</div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Bottom Row: Cloud Security Audit Logs -->
-            <div class="card table-card">
-                <div class="card-header">
-                    <h3>Cloud Security & Compliance Audit Log</h3>
-                    <button class="btn btn-outline btn-sm" onclick="loadAuditLogs()">🔄 Refresh Audit Trail</button>
-                </div>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Security Action</th>
-                                <th>User</th>
-                                <th>Role</th>
-                                <th>IP Address</th>
-                                <th>Event Details</th>
-                            </tr>
-                        </thead>
-                        <tbody id="audit-logs-tbody">
-                            <tr><td colspan="6" class="text-center">Loading audit log stream...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
+                    <!-- Student Parcels Section -->
+                    <div class="student-grid">
+                        <div class="student-main-col">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-header-left">
+                                        <h3>My Deliveries</h3>
+                                        <span class="section-tag">PARCEL STATUS</span>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" onclick="loadStudentDeliveries()">🔄 Refresh</button>
+                                </div>
+                                <div id="student-parcels-list" class="parcels-stack">
+                                    <div class="empty-state">Loading your shipments...</div>
+                                </div>
+                            </div>
+                        </div>
 
-    </main>
+                        <!-- Right Column: Notifications & Security Instructions -->
+                        <div class="student-side-col">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-header-left">
+                                        <h3>In-App Notifications</h3>
+                                        <span class="section-tag">DP-900 JSON</span>
+                                    </div>
+                                </div>
+                                <div id="student-notifications-feed" class="notifications-feed">
+                                    <div class="empty-state">No new alerts.</div>
+                                </div>
+                            </div>
 
-    <!-- ================================================================= -->
+                            <div class="card info-box-card">
+                                <div class="info-card-header">
+                                    <span class="info-icon">🛡️</span>
+                                    <h4>How OTP Handover Works</h4>
+                                </div>
+                                <ol class="info-steps">
+                                    <li>Gate staff logs your incoming parcel and photos its physical condition.</li>
+                                    <li>A single-use 6-digit code is generated and hashed with SHA-256.</li>
+                                    <li>Show the OTP to the gate guard when collecting in person.</li>
+                                    <li>The guard enters it into ParcelDesk to release your package.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- VIEW 3: WARDEN & ADMIN ANALYTICS DASHBOARD -->
+                <!-- ========================================================= -->
+                <section id="warden-view" class="role-view hidden">
+                    <div class="view-header">
+                        <div class="header-content">
+                            <div class="header-pretitle">ANALYTICS // ADMINISTRATION</div>
+                            <h2>Warden & Logistics Analytics</h2>
+                            <p class="subtitle">Comprehensive visibility over parcel volumes, pickup turnaround latency, hostel capacity, and security audits.</p>
+                        </div>
+                        <div class="action-group">
+                            <a href="/api/analytics/powerbi-export" class="btn btn-primary" download>
+                                <span class="btn-icon">📊</span> Export Power BI Dataset (CSV)
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Warden Analytics KPI Cards -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-label">TOTAL VOLUME LOGGED</span>
+                                <span class="metric-indicator">ALL-TIME</span>
+                            </div>
+                            <div class="metric-value" id="warden-total-parcels">0</div>
+                            <div class="metric-sub">All-time packages received</div>
+                        </div>
+                        <div class="metric-card card-highlight-orange">
+                            <div class="metric-header">
+                                <span class="metric-label">AWAITING PICKUP</span>
+                                <span class="metric-indicator text-orange">● SHELF SPACE</span>
+                            </div>
+                            <div class="metric-value text-orange" id="warden-pending-parcels">0</div>
+                            <div class="metric-sub">Currently occupying gate storage</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-label">SUCCESSFULLY COLLECTED</span>
+                                <span class="metric-indicator text-success">✓ HANDED OVER</span>
+                            </div>
+                            <div class="metric-value text-success" id="warden-collected-parcels">0</div>
+                            <div class="metric-sub">Verified handovers completed</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-label">AVG PICKUP TURNAROUND</span>
+                                <span class="metric-indicator">LATENCY</span>
+                            </div>
+                            <div class="metric-value text-warning" id="warden-avg-time">0.0 hrs</div>
+                            <div class="metric-sub">Receipt to verified handover</div>
+                        </div>
+                    </div>
+
+                    <!-- Middle Row: Hostel Distribution & DP-900 Matrix -->
+                    <div class="analytics-two-col">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-header-left">
+                                    <h3>Pending Parcels per Hostel Block</h3>
+                                    <span class="section-tag">CAPACITY</span>
+                                </div>
+                            </div>
+                            <div id="hostel-distribution-bars" class="distribution-bars">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-header-left">
+                                    <h3>DP-900 Data Architecture Classification</h3>
+                                    <span class="section-tag">AZURE SERVICES</span>
+                                </div>
+                            </div>
+                            <div class="dp900-matrix">
+                                <div class="dp900-row">
+                                    <span class="dp900-type type-structured">Structured</span>
+                                    <div class="dp900-desc">
+                                        <strong>Azure SQL Database (3NF Relational)</strong>
+                                        <p>Users, Hostels, Students, Parcels, Handovers, Constraints & Views</p>
+                                    </div>
+                                </div>
+                                <div class="dp900-row">
+                                    <span class="dp900-type type-semi">Semi-Structured</span>
+                                    <div class="dp900-desc">
+                                        <strong>JSON Payloads in Notification Table</strong>
+                                        <p>Dynamic courier delivery events, recipient metadata, and dispatch channels</p>
+                                    </div>
+                                </div>
+                                <div class="dp900-row">
+                                    <span class="dp900-type type-unstructured">Unstructured</span>
+                                    <div class="dp900-desc">
+                                        <strong>Azure Blob Storage</strong>
+                                        <p>High-resolution photos of physical parcels and shipping labels</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Row: Cloud Security Audit Logs -->
+                    <div class="card table-card">
+                        <div class="card-header">
+                            <div class="card-header-left">
+                                <h3>Cloud Security & Compliance Audit Log</h3>
+                                <span class="section-tag">IMMUTABLE LOG</span>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="loadAuditLogs()">🔄 Refresh Audit Trail</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>TIMESTAMP</th>
+                                        <th>SECURITY ACTION</th>
+                                        <th>USER</th>
+                                        <th>ROLE</th>
+                                        <th>IP ADDRESS</th>
+                                        <th>EVENT DETAILS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-logs-tbody">
+                                    <tr><td colspan="6" class="text-center">Loading audit log stream...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- ============================================================= -->
     <!-- MODAL 1: LOG PARCEL MODAL -->
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <div id="modal-log-parcel" class="modal-overlay hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>Log Incoming Parcel at Gate</h3>
+                <div class="modal-header-text">
+                    <span class="modal-pretitle">GATE ENTRY</span>
+                    <h3>Log Incoming Parcel</h3>
+                </div>
                 <button class="modal-close" onclick="closeModal('modal-log-parcel')">&times;</button>
             </div>
             <form id="form-log-parcel" onsubmit="handleLogParcelSubmit(event)">
                 <div class="form-group">
-                    <label for="input-student-select">Student Recipient *</label>
+                    <label for="input-student-select">Student Recipient <span class="req">*</span></label>
                     <select id="input-student-select" required onchange="handleStudentSelectChange(this)">
                         <option value="">-- Select Student Recipient --</option>
                     </select>
@@ -317,7 +492,7 @@
                         <input type="hidden" id="input-hostel-id">
                     </div>
                     <div class="form-group">
-                        <label for="input-courier">Courier Provider *</label>
+                        <label for="input-courier">Courier Provider <span class="req">*</span></label>
                         <select id="input-courier" required>
                             <option value="Amazon India">Amazon India</option>
                             <option value="Flipkart">Flipkart</option>
@@ -332,16 +507,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="input-tracking">Tracking Number / AWB *</label>
+                    <label for="input-tracking">Tracking Number / AWB <span class="req">*</span></label>
                     <div class="input-with-button">
                         <input type="text" id="input-tracking" placeholder="e.g. AMZ-IN-889901 or scan barcode" required>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="generateRandomTracking()">Auto-Gen</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="generateRandomTracking()">Auto-Gen</button>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="input-photo">Package Photo (Azure Blob Storage)</label>
-                    <input type="file" id="input-photo" accept="image/*" onchange="previewPhoto(this)">
+                    <label for="input-photo">Package Condition Photo (Azure Blob Storage)</label>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="input-photo" accept="image/*" onchange="previewPhoto(this)">
+                    </div>
                     <div id="photo-preview-box" class="photo-preview-box hidden">
                         <img id="photo-preview-img" src="" alt="Parcel Preview">
                     </div>
@@ -349,11 +526,11 @@
 
                 <div class="form-group">
                     <label for="input-remarks">Remarks / Description</label>
-                    <input type="text" id="input-remarks" placeholder="e.g. Fragile box, Amazon Fresh, Document pouch">
+                    <input type="text" id="input-remarks" placeholder="e.g. Fragile box, Electronic goods, Document envelope">
                 </div>
 
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" onclick="closeModal('modal-log-parcel')">Cancel</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-log-parcel')">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="btn-submit-parcel">
                         <span>Save & Dispatch Notification</span>
                     </button>
@@ -362,18 +539,21 @@
         </div>
     </div>
 
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <!-- MODAL 2: VERIFY OTP & HANDOVER MODAL -->
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <div id="modal-handover" class="modal-overlay hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>Verify Handover OTP</h3>
+                <div class="modal-header-text">
+                    <span class="modal-pretitle">SECURITY VERIFICATION</span>
+                    <h3>Verify Handover OTP</h3>
+                </div>
                 <button class="modal-close" onclick="closeModal('modal-handover')">&times;</button>
             </div>
             <form id="form-handover" onsubmit="handleHandoverSubmit(event)">
                 <div class="form-group">
-                    <label for="handover-parcel-select">Select Pending Parcel *</label>
+                    <label for="handover-parcel-select">Select Pending Parcel <span class="req">*</span></label>
                     <select id="handover-parcel-select" required onchange="handleHandoverParcelChange(this)">
                         <option value="">-- Choose parcel to verify --</option>
                     </select>
@@ -384,9 +564,11 @@
                 </div>
 
                 <div class="form-group otp-input-group">
-                    <label for="handover-otp-input">Enter 6-Digit One-Time Code *</label>
-                    <input type="text" id="handover-otp-input" maxlength="6" pattern="[0-9]{6}" 
-                           placeholder="••••••" class="otp-input" autocomplete="off" required>
+                    <label for="handover-otp-input">Enter 6-Digit One-Time Code <span class="req">*</span></label>
+                    <div class="otp-input-container">
+                        <input type="text" id="handover-otp-input" maxlength="6" pattern="[0-9]{6}" 
+                               placeholder="••••••" class="otp-input" autocomplete="off" required>
+                    </div>
                     <span class="help-text">Student presents this code from their ParcelDesk portal or SMS.</span>
                 </div>
 
@@ -396,8 +578,8 @@
                 </div>
 
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" onclick="closeModal('modal-handover')">Cancel</button>
-                    <button type="submit" class="btn btn-emerald" id="btn-submit-handover">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-handover')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-handover">
                         <span>Verify & Release Parcel</span>
                     </button>
                 </div>
@@ -405,13 +587,16 @@
         </div>
     </div>
 
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <!-- MODAL 3: PHOTO PREVIEW MODAL -->
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <div id="modal-image-viewer" class="modal-overlay hidden" onclick="closeModal('modal-image-viewer')">
         <div class="modal-card modal-image-card" onclick="event.stopPropagation()">
             <div class="modal-header">
-                <h3 id="image-modal-title">Parcel Photo (Azure Blob Storage)</h3>
+                <div class="modal-header-text">
+                    <span class="modal-pretitle">AZURE BLOB STORAGE</span>
+                    <h3 id="image-modal-title">Parcel Photo</h3>
+                </div>
                 <button class="modal-close" onclick="closeModal('modal-image-viewer')">&times;</button>
             </div>
             <div class="image-viewer-body">
@@ -420,18 +605,21 @@
         </div>
     </div>
 
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <!-- MODAL 4: JSON PAYLOAD VIEWER (DP-900 Semi-Structured Proof) -->
-    <!-- ================================================================= -->
+    <!-- ============================================================= -->
     <div id="modal-json-viewer" class="modal-overlay hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>Semi-Structured Notification Payload (JSON)</h3>
+                <div class="modal-header-text">
+                    <span class="modal-pretitle">DP-900 SEMI-STRUCTURED DATA</span>
+                    <h3>Notification Payload Document (JSON)</h3>
+                </div>
                 <button class="modal-close" onclick="closeModal('modal-json-viewer')">&times;</button>
             </div>
             <pre id="json-viewer-content" class="code-block"></pre>
             <div class="modal-footer">
-                <button class="btn btn-outline" onclick="closeModal('modal-json-viewer')">Close</button>
+                <button class="btn btn-secondary" onclick="closeModal('modal-json-viewer')">Close</button>
             </div>
         </div>
     </div>
