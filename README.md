@@ -9,6 +9,30 @@
 
 ---
 
+## 📌 Project Status
+
+Current development status: **In progress** (college project progress update)
+
+### What is done
+- **3NF Relational Database**: Tables, primary/foreign keys, check constraints, indexes, views (`vw_pending_parcels`, `vw_daily_parcel_volume`, `vw_avg_pickup_time`), trigger (`trg_parcel_collected_after_handover`), and atomic transaction handling.
+- **Authentication & RBAC**: Role-based access control for guard, student, warden, and admin with salted password hashing (PBKDF2/scrypt).
+- **Parcel Entry**: Gate staff parcel logging with student selection, courier, tracking number, condition photo, and remarks.
+- **Notifications & Tracking**: Semi-structured JSON notification payloads stored in database and in-app lifecycle tracking (Received ➔ Notified ➔ Collected).
+- **Secure OTP Handover**: 6-digit single-use OTP, SHA-256 hashed in database, 15-minute TTL, 3-attempt rate limit, verified and released inside an atomic ACID transaction.
+- **Security & Integrity**: 100% parameterized SQL queries, file upload extension validation, secrets kept in `.env` (git-ignored), and audit log ledger for all key actions.
+- **Frontend UI/UX**: Carbon + Signal Orange technical logistics console with collapsible sidebar, multi-criteria filtering, and photo viewer modal.
+- **Automated Tests**: Unit and integration test suite passing 6/6 tests (`tests/test_parceldesk.py`).
+
+### What is partial
+- **Azure SQL Database**: T-SQL schema script (`database/azure_sql_schema.sql`) and `pyodbc` connection code in `database/db.py` are written. The app currently runs on local SQLite; Azure SQL instance is not yet provisioned.
+- **Azure Blob Storage**: Blob upload code with `BlobServiceClient` is implemented in `services/storage_service.py` with automatic local fallback. Currently runs on local disk fallback (`static/uploads/`) since cloud credentials are not yet configured.
+- **Power BI / Analytics**: SQL reporting views, in-app warden dashboard KPIs, hostel distribution bars, and CSV dataset export endpoint (`/api/analytics/powerbi-export`) are working. The standalone Power BI `.pbix` report file is not yet created.
+
+### What is not started
+- **Azure App Service Deployment with HTTPS**: Application currently runs on local development server (`http://127.0.0.1:5000`). Cloud hosting on Azure App Service and HTTPS certificates are not yet started.
+
+---
+
 ## 🌟 Problem Statement & Target Users
 Hostel parcels are traditionally recorded in paper registers at the security gate. Students often remain unaware when packages arrive, parcels get misplaced or claimed by the wrong person, and guards have no verifiable proof of handover. 
 
