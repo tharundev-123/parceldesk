@@ -1,31 +1,43 @@
 import io
 import csv
-from database.db import execute_query
+from database.db import execute_query, is_azure_sql
+
 
 class AnalyticsService:
     @staticmethod
     def get_summary_metrics():
         """Calculates headline KPI metrics for warden dashboard."""
-        counts = execute_query(
+        if is_azure_sql():
+            counts_sql = """
+                SELECT 
+                    COUNT(id) AS total_parcels,
+                    SUM(CASE WHEN status IN ('received', 'notified') THEN 1 ELSE 0 END) AS pending_parcels,
+                    SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END) AS collected_parcels,
+                    SUM(CASE WHEN CAST(received_at AS DATE) = CAST(SYSUTCDATETIME() AS DATE) THEN 1 ELSE 0 END) AS today_parcels
+                FROM parcels;
             """
-            SELECT 
-                COUNT(id) AS total_parcels,
-                SUM(CASE WHEN status IN ('received', 'notified') THEN 1 ELSE 0 END) AS pending_parcels,
-                SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END) AS collected_parcels,
-                SUM(CASE WHEN DATE(received_at) = DATE('now') THEN 1 ELSE 0 END) AS today_parcels
-            FROM parcels;
-            """,
-            fetch_one=True
-        ) or {}
+            avg_sql = """
+                SELECT ROUND(AVG(CAST(DATEDIFF(MINUTE, received_at, collected_at) AS FLOAT) / 60.0), 2) AS avg_pickup_hours
+                FROM parcels
+                WHERE status = 'collected' AND collected_at IS NOT NULL;
+            """
+        else:
+            counts_sql = """
+                SELECT 
+                    COUNT(id) AS total_parcels,
+                    SUM(CASE WHEN status IN ('received', 'notified') THEN 1 ELSE 0 END) AS pending_parcels,
+                    SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END) AS collected_parcels,
+                    SUM(CASE WHEN DATE(received_at) = DATE('now') THEN 1 ELSE 0 END) AS today_parcels
+                FROM parcels;
+            """
+            avg_sql = """
+                SELECT ROUND(AVG((JULIANDAY(collected_at) - JULIANDAY(received_at)) * 24), 2) AS avg_pickup_hours
+                FROM parcels
+                WHERE status = 'collected' AND collected_at IS NOT NULL;
+            """
 
-        avg_time = execute_query(
-            """
-            SELECT ROUND(AVG((JULIANDAY(collected_at) - JULIANDAY(received_at)) * 24), 2) AS avg_pickup_hours
-            FROM parcels
-            WHERE status = 'collected' AND collected_at IS NOT NULL;
-            """,
-            fetch_one=True
-        )
+        counts = execute_query(counts_sql, fetch_one=True) or {}
+        avg_time = execute_query(avg_sql, fetch_one=True)
 
         pending_by_hostel = execute_query(
             """
@@ -62,8 +74,13 @@ class AnalyticsService:
         Exports a flat analytical dataset designed for Power BI consumption,
         integrating structured parcel metrics with semi-structured payload fields.
         """
+        if is_azure_sql():
+            duration_expr = "ROUND(CAST(DATEDIFF(MINUTE, p.received_at, COALESCE(p.collected_at, SYSUTCDATETIME())) AS FLOAT) / 60.0, 2)"
+        else:
+            duration_expr = "ROUND((JULIANDAY(COALESCE(p.collected_at, 'now')) - JULIANDAY(p.received_at)) * 24, 2)"
+
         rows = execute_query(
-            """
+            f"""
             SELECT 
                 p.id AS ParcelID,
                 p.tracking_number AS TrackingNumber,
@@ -75,7 +92,7 @@ class AnalyticsService:
                 p.status AS Status,
                 p.received_at AS ReceivedAt,
                 p.collected_at AS CollectedAt,
-                ROUND((JULIANDAY(COALESCE(p.collected_at, 'now')) - JULIANDAY(p.received_at)) * 24, 2) AS DurationHours,
+                {duration_expr} AS DurationHours,
                 CASE WHEN p.photo_url IS NOT NULL THEN 'Yes' ELSE 'No' END AS HasBlobPhoto,
                 'Structured (Azure SQL)' AS DataClassification
             FROM parcels p

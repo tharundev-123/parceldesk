@@ -1,20 +1,25 @@
 import os
 import sys
 import unittest
+from datetime import datetime, date
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Use in-memory or dedicated test database
+# Use in-memory or dedicated test database (always isolate tests from Azure SQL)
 TEST_DB_PATH = str(PROJECT_ROOT / "database" / "test_parceldesk.db")
 os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
 os.environ["DB_TYPE"] = "sqlite"
+os.environ["AZURE_SQL_CONNECTION_STRING"] = ""
 
 from app import app
 from database.init_db import init_database
-from database.db import execute_query
+from database.db import execute_query, insert_and_get_id, is_azure_sql, row_to_dict
+from services.analytics_service import AnalyticsService
 
 class ParcelDeskTestCase(unittest.TestCase):
     @classmethod
@@ -169,6 +174,58 @@ class ParcelDeskTestCase(unittest.TestCase):
         self.assertIn("text/csv", res_csv.content_type)
         self.assertIn(b"TrackingNumber", res_csv.data)
         self.assertIn(b"Structured (Azure SQL)", res_csv.data)
+
+    def test_07_azure_sql_detection_and_tsql_queries(self):
+        """Tests Azure SQL detection, row normalization, SCOPE_IDENTITY batching, and T-SQL queries."""
+        self.assertFalse(is_azure_sql())
+
+        with patch.dict(os.environ, {"AZURE_SQL_CONNECTION_STRING": "Driver={ODBC Driver 18 for SQL Server};Server=dummy;"}):
+            self.assertTrue(is_azure_sql())
+
+            # Test row_to_dict normalization for pyodbc datetime/date/Decimal types
+            mock_cursor = MagicMock()
+            mock_cursor.description = [("id",), ("received_at",), ("log_date",), ("hours_waiting",)]
+            normalized = row_to_dict(
+                mock_cursor,
+                (1, datetime(2026, 11, 11, 13, 30, 0), date(2026, 11, 11), Decimal("4.5")),
+            )
+            self.assertEqual(normalized, {
+                "id": 1,
+                "received_at": "2026-11-11 13:30:00",
+                "log_date": "2026-11-11",
+                "hours_waiting": 4.5,
+            })
+
+            # Test insert_and_get_id uses SCOPE_IDENTITY() batch on Azure SQL
+            mock_cursor.description = [("id",)]
+            mock_cursor.fetchone.return_value = (42,)
+            new_id = insert_and_get_id(mock_cursor, "INSERT INTO parcels (tracking_number) VALUES (?);", ("T-1",))
+            self.assertEqual(new_id, 42)
+            executed_sql = mock_cursor.execute.call_args[0][0]
+            self.assertIn("SET NOCOUNT ON", executed_sql)
+            self.assertIn("SCOPE_IDENTITY()", executed_sql)
+
+        # Test T-SQL query generation in AnalyticsService and /api/audit-logs
+        with patch("services.analytics_service.is_azure_sql", return_value=True), \
+             patch("services.analytics_service.execute_query", return_value=[]) as mock_exec:
+            AnalyticsService.get_summary_metrics()
+            AnalyticsService.export_powerbi_csv()
+            sql_calls = [call.args[0] for call in mock_exec.call_args_list]
+            for sql in sql_calls:
+                self.assertNotIn("JULIANDAY", sql)
+                self.assertNotIn("DATE('now')", sql)
+            self.assertTrue(any("SYSUTCDATETIME()" in s for s in sql_calls))
+            self.assertTrue(any("DATEDIFF" in s for s in sql_calls))
+
+        self.client.post("/api/login", json={"username": "warden1", "password": "warden123"})
+        with patch("app.is_azure_sql", return_value=True), \
+             patch("app.execute_query", return_value=[]) as mock_app_exec:
+            res_logs = self.client.get("/api/audit-logs")
+            self.assertEqual(res_logs.status_code, 200)
+            audit_sql = mock_app_exec.call_args[0][0]
+            self.assertIn("TOP 100", audit_sql)
+            self.assertNotIn("LIMIT 100", audit_sql)
+
 
 if __name__ == "__main__":
     unittest.main()

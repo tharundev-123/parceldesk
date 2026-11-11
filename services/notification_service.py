@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timezone
-from database.db import execute_query, get_db
+from database.db import execute_query, get_db, insert_and_get_id
 from services.auth_service import AuthService
 
 class NotificationService:
@@ -38,14 +38,14 @@ class NotificationService:
             cursor = conn.cursor()
             
             # Insert notification record with JSON payload
-            cursor.execute(
+            notif_id = insert_and_get_id(
+                cursor,
                 """
                 INSERT INTO notifications (parcel_id, student_id, channel, status, payload_json, sent_at)
                 VALUES (?, ?, ?, 'sent', ?, CURRENT_TIMESTAMP);
                 """,
                 (parcel_id, student_id, "In-App/SMS", payload_json)
             )
-            notif_id = cursor.lastrowid
 
             # Update parcel status to 'notified' if it was 'received'
             cursor.execute(

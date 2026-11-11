@@ -11,8 +11,8 @@ from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, Response
 from flask_cors import CORS
 from config import Config
-from database.db import execute_query
-from database.init_db import init_database
+from database.db import execute_query, is_azure_sql
+from database.init_db import init_database, seed_sample_data
 from services.auth_service import AuthService
 from services.parcel_service import ParcelService
 from services.storage_service import StorageService
@@ -357,25 +357,36 @@ def export_powerbi():
 @roles_required("warden", "admin")
 def get_audit_logs():
     """Returns Cloud Security audit logs for compliance review."""
-    logs = execute_query(
+    if is_azure_sql():
+        query = """
+            SELECT TOP 100 a.id, a.action, a.details, a.ip_address, a.created_at,
+                   u.username, u.role, u.full_name
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            ORDER BY a.created_at DESC;
         """
-        SELECT a.id, a.action, a.details, a.ip_address, a.created_at,
-               u.username, u.role, u.full_name
-        FROM audit_logs a
-        LEFT JOIN users u ON a.user_id = u.id
-        ORDER BY a.created_at DESC
-        LIMIT 100;
-        """,
-        fetch_all=True
-    )
+    else:
+        query = """
+            SELECT a.id, a.action, a.details, a.ip_address, a.created_at,
+                   u.username, u.role, u.full_name
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            ORDER BY a.created_at DESC
+            LIMIT 100;
+        """
+    logs = execute_query(query, fetch_all=True)
     return jsonify({"audit_logs": logs}), 200
 
 # ---------------------------------------------------------------------------
 # Application Startup & DB check
 # ---------------------------------------------------------------------------
 with app.app_context():
-    # Automatically initialize local SQLite DB if missing
-    if not os.path.exists(Config.SQLITE_DB_PATH):
+    if is_azure_sql():
+        try:
+            seed_sample_data()
+        except Exception as exc:
+            print(f"[Startup Warning] Could not seed Azure SQL database yet: {exc}")
+    elif not os.path.exists(Config.SQLITE_DB_PATH):
         init_database(seed=True)
 
 if __name__ == "__main__":

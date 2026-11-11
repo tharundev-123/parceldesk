@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from database.db import execute_query, get_db
+from database.db import execute_query, get_db, insert_and_get_id, row_to_dict
 from config import Config
 from services.auth_service import AuthService
 from services.notification_service import NotificationService
@@ -34,7 +34,8 @@ class ParcelService:
         # 2. Insert parcel record
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute(
+            parcel_id = insert_and_get_id(
+                cursor,
                 """
                 INSERT INTO parcels (
                     tracking_number, courier_name, student_id, hostel_id, 
@@ -45,7 +46,6 @@ class ParcelService:
                 (tracking_number, courier_name, student_id, hostel_id,
                  logged_by_guard_id, photo_url, otp_hash, expiry_time, remarks)
             )
-            parcel_id = cursor.lastrowid
 
         # 3. Retrieve student and hostel details for notification
         student_details = execute_query(
@@ -172,7 +172,7 @@ class ParcelService:
             if not parcel:
                 raise ValueError("Parcel not found.")
 
-            parcel = dict(parcel)
+            parcel = row_to_dict(cursor, parcel)
 
             # 2. State validation
             if parcel["status"] == "collected":
@@ -207,14 +207,14 @@ class ParcelService:
 
             # 6. ATOMIC TRANSACTION: Handover Ledger + Parcel Status Update
             # Step A: Insert Handover Proof
-            cursor.execute(
+            handover_id = insert_and_get_id(
+                cursor,
                 """
                 INSERT INTO handovers (parcel_id, student_id, verified_by_guard_id, otp_verified_hash, handover_time, notes)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?);
                 """,
                 (parcel_id, parcel["student_id"], guard_user_id, submitted_hash, notes)
             )
-            handover_id = cursor.lastrowid
 
             # Step B: Mark parcel as collected (also supported by DB trigger)
             cursor.execute(

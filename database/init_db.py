@@ -10,24 +10,26 @@ if str(PROJECT_ROOT) not in sys.path:
 import hashlib
 from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash
-from database.db import get_connection, get_db
+from database.db import get_connection, get_db, insert_and_get_id, is_azure_sql
 from config import Config
 
 def init_database(seed=True):
-    """Executes schema DDL and seeds initial demo data."""
-    print(f"[*] Initializing ParcelDesk database at: {Config.SQLITE_DB_PATH}")
-    
-    schema_path = os.path.join(os.path.dirname(__file__), "sqlite_schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        schema_sql = f.read()
+    """Executes schema DDL (SQLite) and seeds initial demo data."""
+    if is_azure_sql():
+        print("[*] Azure SQL configured (using existing Azure SQL schema).")
+    else:
+        print(f"[*] Initializing ParcelDesk SQLite database at: {Config.SQLITE_DB_PATH}")
+        schema_path = os.path.join(os.path.dirname(__file__), "sqlite_schema.sql")
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema_sql = f.read()
 
-    conn = get_connection()
-    try:
-        conn.executescript(schema_sql)
-        conn.commit()
-        print("[+] Schema created successfully (Tables, Views, Indexes, Triggers).")
-    finally:
-        conn.close()
+        conn = get_connection()
+        try:
+            conn.executescript(schema_sql)
+            conn.commit()
+            print("[+] Schema created successfully (Tables, Views, Indexes, Triggers).")
+        finally:
+            conn.close()
 
     if seed:
         seed_sample_data()
@@ -115,7 +117,8 @@ def seed_sample_data():
         expiry_2 = (datetime.now(timezone.utc) + timedelta(minutes=15)).strftime('%Y-%m-%d %H:%M:%S')
 
         # Parcel 1: Received / Notified (Pending collection for student1)
-        cursor.execute(
+        p1_id = insert_and_get_id(
+            cursor,
             """
             INSERT INTO parcels (
                 tracking_number, courier_name, student_id, hostel_id, 
@@ -126,7 +129,6 @@ def seed_sample_data():
             ("AMZ-IN-889210", "Amazon India", student_ids[user_ids["student1"]], hostel_ids["BH-1"],
              user_ids["guard1"], None, hash_otp_1, expiry_1, "Electronics package (Laptop charger)")
         )
-        p1_id = cursor.lastrowid
 
         # Notification for Parcel 1
         notif_payload_1 = f'{{"event": "PARCEL_RECEIVED", "courier": "Amazon India", "tracking": "AMZ-IN-889210", "room": "Room 204", "demo_otp": "{plain_otp_1}"}}'
@@ -136,7 +138,8 @@ def seed_sample_data():
         )
 
         # Parcel 2: Received / Notified (Pending collection for student2)
-        cursor.execute(
+        p2_id = insert_and_get_id(
+            cursor,
             """
             INSERT INTO parcels (
                 tracking_number, courier_name, student_id, hostel_id, 
@@ -147,7 +150,6 @@ def seed_sample_data():
             ("FK-BLR-441299", "Flipkart", student_ids[user_ids["student2"]], hostel_ids["GH-1"],
              user_ids["guard1"], None, hash_otp_2, expiry_2, "Book parcel from Flipkart")
         )
-        p2_id = cursor.lastrowid
 
         notif_payload_2 = f'{{"event": "PARCEL_RECEIVED", "courier": "Flipkart", "tracking": "FK-BLR-441299", "room": "Room 112", "demo_otp": "{plain_otp_2}"}}'
         cursor.execute(
@@ -158,7 +160,8 @@ def seed_sample_data():
         # Parcel 3: Collected / Handed Over (for student3 earlier today)
         earlier_time = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime('%Y-%m-%d %H:%M:%S')
         collected_time = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(
+        p3_id = insert_and_get_id(
+            cursor,
             """
             INSERT INTO parcels (
                 tracking_number, courier_name, student_id, hostel_id, 
@@ -169,7 +172,6 @@ def seed_sample_data():
             ("BLUEDART-091283", "Blue Dart", student_ids[user_ids["student3"]], hostel_ids["BH-2"],
              user_ids["guard1"], None, earlier_time, collected_time, "Study notes and clothing")
         )
-        p3_id = cursor.lastrowid
 
         # Handover proof for Parcel 3
         dummy_verified_hash = hashlib.sha256("123456".encode('utf-8')).hexdigest()

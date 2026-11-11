@@ -10,10 +10,10 @@ BASE_DIR = Path(__file__).resolve().parent
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "parceldesk-default-secret-key-replace-in-production")
     
-    # Database Settings
-    DB_TYPE = os.getenv("DB_TYPE", "sqlite").lower()
+    # Database Settings (Uses Azure SQL when AZURE_SQL_CONNECTION_STRING is set; otherwise SQLite)
     SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", str(BASE_DIR / "database" / "parceldesk.db"))
-    AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
+    AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "").strip()
+    DB_TYPE = "azure_sql" if AZURE_SQL_CONNECTION_STRING else "sqlite"
     
     # Azure Blob Storage (DP-900 Unstructured Data)
     AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
