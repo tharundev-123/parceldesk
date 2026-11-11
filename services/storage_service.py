@@ -33,9 +33,9 @@ class StorageService:
                 blob_service = BlobServiceClient.from_connection_string(Config.AZURE_STORAGE_CONNECTION_STRING)
                 container_client = blob_service.get_container_client(Config.AZURE_STORAGE_CONTAINER_NAME)
                 
-                # Ensure container exists
+                # Ensure private container exists
                 if not container_client.exists():
-                    container_client.create_container(public_access="blob")
+                    container_client.create_container()
 
                 blob_client = container_client.get_blob_client(unique_name)
                 blob_client.upload_blob(file_storage.stream, overwrite=True)

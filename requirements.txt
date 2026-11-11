@@ -2,6 +2,6 @@ flask>=3.0.0
 flask-cors>=4.0.0
 python-dotenv>=1.0.0
 werkzeug>=3.0.0
-# Optional Azure packages (ParcelDesk gracefully falls back to local storage when unconfigured)
-# azure-storage-blob>=12.19.0
+gunicorn>=21.2.0
+azure-storage-blob>=12.19.0
 pyodbc>=5.0.0
