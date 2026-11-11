@@ -1,0 +1,4 @@
+log_date,hostel_name,total_parcels,collected_parcels,pending_parcels
+2026-11-11,Boys Hostel 1 (Everest),1,0,1
+2026-11-11,Boys Hostel 2 (Himalaya),2,1,1
+2026-11-11,Girls Hostel 1 (Nilgiri),2,1,1

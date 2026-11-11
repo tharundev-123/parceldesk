@@ -281,18 +281,20 @@ erDiagram
 
 ## 11. Screenshots
 
-> Replace the placeholders below with captured screenshots before final submission.
+1. **Azure Resource Group (`parceldesk-rg`) Overview**  
+   ![Azure Resource Group](screenshots/azure_resource_group.png)
 
-1. **Gate Staff Console (Parcel Entry & Pending Queue)**  
-   `![Gate Staff Console](screenshots/01_gate_console.png)`
-2. **OTP Handover Verification Modal & Confirmed Collection**  
-   `![OTP Handover Modal](screenshots/02_otp_handover.png)`
-3. **Student Delivery Portal (Timeline & Collection Passcode)**  
-   `![Student Portal](screenshots/03_student_portal.png)`
-4. **Warden Analytics Dashboard & Security Audit Log**  
-   `![Warden Analytics](screenshots/04_warden_analytics.png)`
-5. **Azure Portal Resources (App Service, Azure SQL, Blob Storage)**  
-   `![Azure Resources](screenshots/05_azure_resources.png)`
+2. **Azure SQL Server Firewall Rules (`parceldesk-td`)**  
+   ![Azure SQL Firewall Rules](screenshots/sql_firewall_rules.png)
+
+3. **Azure Blob Storage Private Container (`parcel-photos`)**  
+   ![Azure Blob Storage Container](screenshots/blob_container.png)
+
+4. **Live ParcelDesk Site over HTTPS (`parceldesk-td-2026.azurewebsites.net`)**  
+   ![Live HTTPS Site](screenshots/live_site_https.png)
+
+5. **Power BI Analytics Dashboard**  
+   ![Power BI Analytics Dashboard](screenshots/powerbi_dashboard.png)
 
 ---
 
@@ -302,3 +304,4 @@ erDiagram
 - **AI Tools Used:**
   - **Antigravity** — assisted with project scaffolding, Carbon + Signal Orange UI/UX redesign, Azure SQL (`pyodbc`) integration, T-SQL query scripting, Azure App Service deployment, and documentation.
   - **Claude** — assisted with planning, design refinement, and review.
+

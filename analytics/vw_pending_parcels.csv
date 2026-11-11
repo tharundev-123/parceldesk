@@ -1,0 +1,4 @@
+parcel_id,tracking_number,courier_name,photo_url,status,received_at,hostel_id,hostel_name,hostel_code,student_id,student_name,student_roll_no,room_no,student_phone,logged_by_guard,hours_waiting
+4,AMZ-623433,Amazon India,,notified,2026-11-11 13:44:21,3,Boys Hostel 2 (Himalaya),BH-2,3,Amit Singh,2024ME310,Room 301,+91 98765 00003,Rajesh Kumar (Gate Staff),0.8
+2,FK-BLR-441299,Flipkart,,notified,2026-11-11 13:42:34,2,Girls Hostel 1 (Nilgiri),GH-1,2,Priya Patel,2024EC205,Room 112,+91 98765 00002,Rajesh Kumar (Gate Staff),0.9
+1,AMZ-IN-889210,Amazon India,,notified,2026-11-11 13:42:34,1,Boys Hostel 1 (Everest),BH-1,1,Rahul Verma,2024CS101,Room 204,+91 98765 00001,Rajesh Kumar (Gate Staff),0.9
