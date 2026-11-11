@@ -2,27 +2,27 @@
 
 ## 1. Role-Based Access Control (RBAC) Matrix
 
-ParcelDesk implements least-privilege Role-Based Access Control enforcing role separation across Guard, Student, Warden, and Admin users:
+ParcelDesk enforces Role-Based Access Control across `guard`, `student`, `warden`, and `admin` roles using [`@login_required`](../app.py) and [`@roles_required(...)`](../app.py) in [`app.py`](../app.py):
 
-| Feature / Resource | Gate Guard (`guard`) | Student (`student`) | Hostel Warden (`warden`) | System Admin (`admin`) |
+| Feature / Endpoint | Gate Guard (`guard`) | Student (`student`) | Hostel Warden (`warden`) | System Admin (`admin`) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Log Arriving Parcel** | ✅ | ❌ | ❌ | ✅ |
-| **Upload Parcel Photo** | ✅ | ❌ | ❌ | ✅ |
-| **View Own Deliveries** | ❌ | ✅ | ❌ | ✅ |
-| **View Active OTP** | ❌ | ✅ | ❌ | ✅ |
-| **Regenerate Own OTP** | ❌ | ✅ | ❌ | ✅ |
-| **Verify OTP & Handover**| ✅ | ❌ | ❌ | ✅ |
-| **View Pending Queue** | ✅ | ❌ | ✅ | ✅ |
-| **Warden Analytics & KPIs**| ❌ | ❌ | ✅ | ✅ |
-| **Export Power BI CSV** | ❌ | ❌ | ✅ | ✅ |
-| **View Audit Trail** | ❌ | ❌ | ✅ | ✅ |
+| **Log Arriving Parcel & Upload Photo** (`POST /api/parcels`) | ✅ | ❌ | ❌ | ✅ |
+| **View Own Deliveries & Notifications** (`GET /api/parcels`, `/api/notifications`) | ❌ *(sees all parcels)* | ✅ | ❌ *(sees all parcels)* | ❌ *(sees all parcels)* |
+| **Regenerate Own OTP** (`POST /api/parcels/<id>/regenerate-otp`) | ❌ | ✅ | ❌ | ❌ *(403: student-only)* |
+| **Verify OTP & Handover** (`POST /api/parcels/<id>/handover`) | ✅ | ❌ | ❌ | ✅ |
+| **View Pending Queue** (`GET /api/parcels/pending`) | ✅ | ❌ | ✅ | ✅ |
+| **Resend Notification** (`POST /api/parcels/<id>/notify`) | ✅ | ❌ | ✅ | ✅ |
+| **Analytics KPIs** (`GET /api/analytics/summary`) | ✅ | ❌ | ✅ | ✅ |
+| **Export Power BI CSV** (`GET /api/analytics/powerbi-export`) | ❌ | ❌ | ✅ | ✅ |
+| **View Audit Trail** (`GET /api/audit-logs`) | ❌ | ❌ | ✅ | ✅ |
+| **List Students** (`GET /api/students`) | ✅ | ✅ *(`@login_required`)* | ✅ | ✅ |
 
-Middleware decorators [`@login_required`](file:///c:/Users/THARUN%20DEV/OneDrive/Documents/parceldesk-project/app.py) and [`@roles_required(...)`](file:///c:/Users/THARUN%20DEV/OneDrive/Documents/parceldesk-project/app.py) intercept every API invocation and return HTTP 401/403 for unauthorized requests.
+Unauthorized requests receive HTTP `401` or `403`. *(Note: restricting `GET /api/students` to staff roles is tracked under Known Limitations.)*
 
 ---
 
 ## 2. Password Security & Cryptography
-- **Hashing Algorithm**: Cryptographically salted PBKDF2 (SHA-256) or scrypt implemented via Werkzeug security primitives.
+- **Hashing Algorithm**: Cryptographically salted PBKDF2/scrypt implemented via Werkzeug (`generate_password_hash` / `check_password_hash`) in [`services/auth_service.py`](../services/auth_service.py).
 - **Salts**: Automatically generated per-user salt to thwart rainbow-table precomputations.
 - **Verification**: Constant-time comparison preventing timing attacks.
 
@@ -42,15 +42,15 @@ sequenceDiagram
     Guard->>API: POST /api/parcels (Tracking, Courier, Student, Photo)
     API->>API: Generate 6-digit random code (secrets module)
     API->>API: Compute SHA-256 Digest = H(Code)
-    API->>DB: INSERT parcel (otp_hash=H(Code), otp_expiry=NOW() + 15m, attempts=0)
+    API->>DB: INSERT parcel (otp_hash=H(Code), otp_expiry=UTC+15m, attempts=0)
     API->>DB: INSERT notification (Semi-structured JSON payload)
-    API-->>Student: Deliver Alert with OTP (In-App / SMS)
+    API-->>Guard: Return parcel metadata + plain OTP (shown once at logging)
 
     Note over Guard,DB: Step B: Collection & Verified Handover
-    Student->>Guard: Shows 6-digit OTP code at gate
-    Guard->>API: POST /api/parcels/{id}/handover (Submitted OTP)
+    Student->>Guard: Shows 6-digit OTP code at gate (or refreshes via student portal)
+    Guard->>API: POST /api/parcels/<id>/handover (Submitted OTP)
     API->>DB: Query parcel (otp_hash, otp_expiry, otp_attempts)
-    API->>API: Compute Hash of Submitted OTP
+    API->>API: Compute SHA-256 Hash of Submitted OTP
     alt OTP Expired or Attempts >= 3
         API-->>Guard: Reject with HTTP 400 (Requires Regeneration)
     else Hash Mismatch
@@ -59,41 +59,42 @@ sequenceDiagram
     else Hash Matches
         Note over API,DB: Atomic ACID Transaction
         API->>DB: INSERT into handovers (parcel_id, guard_id, otp_verified_hash)
-        API->>DB: UPDATE parcels SET status='collected', collected_at=NOW()
+        API->>DB: UPDATE parcels SET status='collected', collected_at=NOW(), otp_hash=NULL
         API->>DB: INSERT into audit_logs (action='PARCEL_HANDOVER_COMPLETED')
         API-->>Guard: 200 OK (Parcel Released)
     end
 ```
 
 ### Key Security Safeguards:
-1. **Never Stored in Plaintext**: Only the 64-character SHA-256 hexadecimal digest is stored in the database.
-2. **Short TTL (Time-To-Live)**: Codes automatically expire after 15 minutes.
-3. **Brute-Force Counter**: Verification locks after 3 failed attempts (`otp_attempts >= 3`).
+1. **Hashed Storage Only in `parcels`**: Only SHA-256 hashed OTPs (`otp_hash`) are stored in the `parcels` table; the plain OTP is shown once at parcel logging (and when regenerated by the student).
+2. **Short TTL (Time-To-Live)**: Codes automatically expire after 15 minutes (`OTP_EXPIRY_MINUTES=15`).
+3. **Brute-Force Counter**: Verification stops after 3 failed attempts (`otp_attempts >= 3`).
 4. **Single-Use Invalidation**: Upon successful handover, `otp_hash` is wiped (`NULL`) and the parcel is marked `'collected'`.
 
 ---
 
-## 4. Secret Management & Azure Key Vault
-- **Zero Hardcoded Credentials**: API secrets, database connection strings, and storage keys are strictly isolated into environment variables (`.env`).
-- **Production Integration**: In Azure App Service, configuration is sourced directly from **Azure Key Vault** using Managed Identities (System-Assigned Managed Identity), eliminating credential files from the deployment artifact.
+## 4. Secret Management & Environment Configuration
+- **Secrets Stored in App Settings, Not Repository**: `SECRET_KEY`, `AZURE_SQL_CONNECTION_STRING`, and `AZURE_STORAGE_CONNECTION_STRING` are configured as **Azure App Service environment settings** in production and in a local `.env` file during development.
+- **Excluded from Git**: `.env` is listed in `.gitignore` (verified with `git check-ignore .env`) so no secrets or connection strings are committed to the repository.
 
 ---
 
-## 5. SQL Injection & Cross-Site Scripting (XSS) Defenses
-1. **100% Parameterized Queries**: All database queries use parameter substitution placeholders (`?` / `@Param`). String concatenation for SQL queries is forbidden.
-2. **Input Validation**: Filenames uploaded for parcel photos are sanitized using `werkzeug.utils.secure_filename` with UUID prefixes to block directory traversal attacks (`../../evil.sh`).
-3. **HTML Sanitization**: Client-side JavaScript passes all server-rendered strings through `escapeHtml()` to neutralize stored or reflected Cross-Site Scripting (XSS).
-4. **Cookie Flags**: Session cookies are configured with `HttpOnly=True` and `SameSite=Lax`.
+## 5. SQL Injection, XSS & Transport Defenses
+1. **100% Parameterized Queries**: All database queries use parameter substitution placeholders (`?`) via [`database/db.py`](../database/db.py).
+2. **Upload Sanitization**: Filenames uploaded for parcel photos are checked against an image extension allowlist (`png`, `jpg`, `jpeg`, `webp`, `gif`) and sanitized with `werkzeug.utils.secure_filename` plus a random UUID prefix.
+3. **HTML Escaping**: Client-side JavaScript passes displayed text fields through `escapeHtml()` to mitigate Cross-Site Scripting (XSS).
+4. **HTTPS & Cookie Flags**: Azure App Service enforces HTTPS Only (`httpsOnly: true`), and Flask session cookies use `HttpOnly=True` and `SameSite=Lax` in [`config.py`](../config.py).
 
 ---
 
 ## 6. Audit Logging & Compliance Ledger
-Every security-critical event is written to the immutable `audit_logs` table:
-- `LOGIN_SUCCESS` / `LOGIN_FAILED`
+Security-relevant events are written to the `audit_logs` table:
+- `LOGIN_SUCCESS` / `LOGIN_FAILED` / `LOGOUT`
 - `PARCEL_LOGGED`
 - `NOTIFICATION_SENT`
 - `OTP_REGENERATED`
 - `HANDOVER_FAILED_INVALID_OTP`
 - `PARCEL_HANDOVER_COMPLETED`
+- `SYSTEM_INIT`
 
-Logs record the timestamp, operating user ID, security action, event detail payload, and client IP address (`X-Forwarded-For`).
+Logs record the timestamp, user ID (when available), security action, event details, and client IP address (`X-Forwarded-For`).

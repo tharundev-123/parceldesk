@@ -105,38 +105,37 @@ erDiagram
 
 ## 3. Schema Normalization (3NF Justification)
 
-1. **1NF (Atomic Attributes)**: Every column stores atomic values (no multivalued or composite attributes; JSON notification payloads are intentionally isolated for semi-structured log tracking).
+1. **1NF (Atomic Attributes)**: Every column stores atomic values (no multivalued or composite attributes; JSON notification payloads are stored in `notifications.payload_json` for semi-structured log tracking).
 2. **2NF (No Partial Functional Dependencies)**: All non-key attributes are fully functionally dependent on the entire primary key (all tables use single-column integer identity/autoincrement primary keys).
-3. **3NF (No Transitive Functional Dependencies)**: Non-key attributes depend *only* on the candidate keys. For instance, room numbers and hostel allocations are attached to the `students` entity rather than duplicated on each `parcels` row.
+3. **3NF (No Transitive Functional Dependencies)**: Core entities (`users`, `hostels`, `students`, `parcels`, `notifications`, `handovers`, `audit_logs`) separate user accounts, hostel metadata, student room allocations, parcel logs, and physical handover proofs. Only SHA-256 hashed OTPs (`otp_hash`) are stored in the `parcels` table, and the plain OTP is shown once at parcel logging. *(Note: `parcels.hostel_id` intentionally snapshots the destination hostel at arrival time even though `students` also has `hostel_id`, and `handovers.student_id`, `notifications.student_id`, and `users.phone`/`students.phone` carry minor denormalized references for direct reporting joins.)*
 
 ---
 
 ## 4. ACID Transaction Handover Logic
 
-The handover process represents the critical business transition from *holding* to *collected*. To maintain relational consistency, the verification, status update, and proof record insertion execute inside a single atomic transaction:
+The handover process represents the critical business transition from *holding* to *collected*. Inside [`services/parcel_service.py`](../services/parcel_service.py) (and demonstrated in T-SQL inside [`database/queries.sql`](../database/queries.sql)), verification, handover insertion, parcel status update, and audit logging execute inside a database transaction (`UNIQUE(parcel_id)` on `handovers` prevents duplicate handovers, and invalid OTPs increment `otp_attempts` before raising an error):
 
 ```sql
 BEGIN TRANSACTION;
 
--- Step 1: Query parcel state & verify active status and TTL
+-- Step 1: Query parcel state & verify active status, attempts (< 3), and TTL
 SELECT id, student_id, status, otp_hash, otp_expiry, otp_attempts
-FROM parcels WHERE id = @ParcelId;
+FROM dbo.parcels WITH (UPDLOCK, ROWLOCK) WHERE id = @ParcelId;
 
--- Step 2: Validate OTP hash (SHA-256 match) & attempt limit (< 3)
--- (If invalid: UPDATE parcels SET otp_attempts = otp_attempts + 1; ROLLBACK;)
+-- Step 2: Validate SHA-256 OTP hash (if invalid, increment otp_attempts and reject)
 
--- Step 3: Insert Handover Proof into ledger
-INSERT INTO handovers (parcel_id, student_id, verified_by_guard_id, otp_verified_hash, handover_time, notes)
-VALUES (@ParcelId, @StudentId, @GuardUserId, @SubmittedHash, CURRENT_TIMESTAMP, @Notes);
+-- Step 3: Insert Handover Proof into ledger (fires trg_parcel_collected_after_handover)
+INSERT INTO dbo.handovers (parcel_id, student_id, verified_by_guard_id, otp_verified_hash, handover_time, notes)
+VALUES (@ParcelId, @StudentId, @GuardUserId, @SubmittedHash, SYSUTCDATETIME(), @Notes);
 
--- Step 4: Transition parcel status to collected
-UPDATE parcels 
-SET status = 'collected', collected_at = CURRENT_TIMESTAMP, otp_hash = NULL 
+-- Step 4: Transition parcel status to collected and clear single-use otp_hash
+UPDATE dbo.parcels 
+SET status = 'collected', collected_at = SYSUTCDATETIME(), otp_hash = NULL 
 WHERE id = @ParcelId;
 
 -- Step 5: Write Security Audit
-INSERT INTO audit_logs (user_id, action, details, ip_address, created_at)
-VALUES (@GuardUserId, 'PARCEL_HANDOVER_COMPLETED', @AuditDetails, @ClientIP, CURRENT_TIMESTAMP);
+INSERT INTO dbo.audit_logs (user_id, action, details, created_at)
+VALUES (@GuardUserId, 'PARCEL_HANDOVER_COMPLETED', @AuditDetails, SYSUTCDATETIME());
 
 COMMIT TRANSACTION;
 ```
@@ -145,8 +144,10 @@ COMMIT TRANSACTION;
 
 ## 5. Database Views (Reporting & Analytics)
 
-### View 1: `vw_pending_parcels`
-Provides gate guards and wardens with a live, real-time query of packages awaiting pickup, joined with student contact numbers, hostel rooms, and elapsed wait time:
+Both [`database/azure_sql_schema.sql`](../database/azure_sql_schema.sql) (T-SQL using `DATEDIFF`, `CAST(... AS DATE)`, `SYSUTCDATETIME()`) and [`database/sqlite_schema.sql`](../database/sqlite_schema.sql) (SQLite using `JULIANDAY` and `DATE`) define the same three analytical views (`vw_pending_parcels`, `vw_daily_parcel_volume`, `vw_avg_pickup_time`):
+
+### View 1: `vw_pending_parcels` (SQLite version shown; T-SQL uses `DATEDIFF`)
+Provides gate guards and wardens with a live query of packages awaiting pickup, joined with student contact numbers, hostel rooms, and elapsed wait time:
 ```sql
 CREATE VIEW vw_pending_parcels AS
 SELECT 
@@ -205,10 +206,18 @@ GROUP BY h.name;
 
 ---
 
-## 6. Indexing & Optimization Strategy
+## 6. Indexing & Azure SQL Firewall Notes
 
-1. **`idx_parcels_student_id`**: Accelerates student dashboard lookups (`SELECT * FROM parcels WHERE student_id = ?`).
-2. **`idx_parcels_status`**: Accelerates pending parcels queries (`WHERE status IN ('received', 'notified')`).
-3. **`idx_parcels_tracking`**: Guarantees fast $O(\log n)$ barcode scanner searches by courier tracking number.
-4. **`idx_notifications_parcel`**: Enables rapid retrieval of notifications linked to specific parcels.
-5. **`idx_handovers_parcel`**: Ensures instantaneous verification of whether a parcel has prior collection records.
+### Shared Indexes (Defined in both `azure_sql_schema.sql` and `sqlite_schema.sql`)
+1. **`idx_parcels_student_id`** on `parcels(student_id)` — Accelerates student dashboard lookups.
+2. **`idx_parcels_status`** on `parcels(status)` — Accelerates pending parcels queries.
+3. **`idx_parcels_tracking`** on `parcels(tracking_number)` — Accelerates tracking-number searches.
+4. **`idx_notifications_parcel`** on `notifications(parcel_id)` — Accelerates notification lookups per parcel.
+5. **`idx_handovers_parcel`** on `handovers(parcel_id)` — Accelerates handover verification lookups.
+
+### SQLite-Only Indexes (Defined in `sqlite_schema.sql` only)
+6. **`idx_parcels_hostel`** on `parcels(hostel_id)` — Present in `sqlite_schema.sql`; not defined in `azure_sql_schema.sql`.
+7. **`idx_audit_logs_user`** on `audit_logs(user_id)` — Present in `sqlite_schema.sql`; not defined in `azure_sql_schema.sql`.
+
+### Azure SQL Server Networking
+- Azure SQL firewall rules enable **Allow Azure services and resources to access this server** (`0.0.0.0`) so App Service can connect, alongside explicit **client IP rules** for local/developer access.

@@ -15,14 +15,11 @@
 
 ### Implemented & Deployed
 - **Azure App Service Hosting (HTTPS):** Deployed at [https://parceldesk-td-2026.azurewebsites.net](https://parceldesk-td-2026.azurewebsites.net) on Linux Python 3.11 (`F1` Free tier) with HTTPS Only enabled (`gunicorn`).
-- **Azure SQL Database (`parceldesk-td/parceldesk-db`):** Connected via `pyodbc` using `AZURE_SQL_CONNECTION_STRING` (falls back automatically to SQLite when unset). 7 3NF tables, 3 views, indexes, and 1 handover trigger are active.
+- **Azure SQL Database (`parceldesk-td/parceldesk-db`):** Connected via `pyodbc` using `AZURE_SQL_CONNECTION_STRING` (falls back automatically to SQLite when unset). All 7 3NF tables, 3 views, indexes, and 1 handover trigger are active.
 - **Azure Blob Storage (`parceldeskstore26`):** Configured with a private `parcel-photos` container (`LRS`), falling back to `static/uploads/` when cloud storage is unconfigured.
-- **Core Workflows & Security:** Role-based login (`guard`, `student`, `warden`, `admin`) with salted password hashes, parcel logging, JSON notifications, SHA-256 hashed 15-minute single-use OTP handover inside an ACID transaction, parameterized SQL queries, and `audit_logs`.
+- **Power BI Analytics Report (`parceldesk-analytics.pbix`):** Done — saved in the repository root alongside exported view CSVs in `analytics/`, live SQL reporting views (`vw_pending_parcels`, `vw_daily_parcel_volume`, `vw_avg_pickup_time`), in-app warden KPIs, and `/api/analytics/powerbi-export` CSV download.
+- **Core Workflows & Security:** Role-based login (`guard`, `student`, `warden`, `admin`) with salted password hashes, parcel logging, JSON notifications, SHA-256 hashed 15-minute single-use OTP handover inside an ACID transaction (only SHA-256 hashed OTPs are stored in the `parcels` table, and the plain OTP is shown once at parcel logging), parameterized SQL queries, and `audit_logs`.
 - **UI & Automated Tests:** Carbon + Signal Orange UI (`templates/index.html`, `static/css/style.css`, `static/js/app.js`) and 7/7 passing tests (`tests/test_parceldesk.py`).
-
-### Pending / Partial
-- **Power BI `.pbix` Report:** SQL reporting views (`vw_pending_parcels`, `vw_daily_parcel_volume`, `vw_avg_pickup_time`), in-app warden KPIs, and `/api/analytics/powerbi-export` CSV export are live; standalone `.pbix` report file is not yet created.
-- **Private Blob Image Viewing:** Uploading to the private `parcel-photos` container works; generating SAS tokens or an authenticated proxy endpoint to render private blob URLs in `<img>` tags is not yet added.
 
 ---
 
@@ -49,7 +46,7 @@ Use the **Operational Role** selector in the sidebar or authenticate via `/api/l
 | **Warden** | `warden1` | `warden123` | Dr. Ananya Sharma (Chief Warden) — analytics & audit logs |
 | **Admin** | `admin` | `admin123` | System Administrator — full access |
 
-> Note: Pending seeded parcels can be handed over by logging in as `student1` or `student2` and clicking **Reveal / Refresh OTP** to get a fresh 6-digit code (or using initial seeded demo OTPs `482910` for `student1` / `739104` for `student2` within 15 minutes of seeding).
+> To test an OTP handover on any active parcel, sign in as the matching student and click **Reveal / Refresh OTP** to generate a fresh 6-digit code, then sign in as `guard1` and submit that code in **Verify Handover (OTP)**.
 
 ---
 
@@ -78,7 +75,7 @@ Copy-Item .env.example .env
   ```powershell
   python database/init_db.py
   ```
-- **Azure SQL:** Run [`database/azure_sql_schema.sql`](database/azure_sql_schema.sql) (or the chunks in Azure Portal Query Editor) first, then run `python database/init_db.py` to seed demo rows if the tables are empty.
+- **Azure SQL:** Run [`database/azure_sql_schema.sql`](database/azure_sql_schema.sql) (or the portal chunks) first, then run `python database/init_db.py` to seed demo rows if the tables are empty.
 
 ### 4. Run Locally
 ```powershell
@@ -92,7 +89,7 @@ Open **`http://127.0.0.1:5000`**.
 ```powershell
 python -m unittest tests/test_parceldesk.py -v
 ```
-Runs 7 unit/integration tests covering guard/invalid auth, parcel logging with SHA-256 OTP and JSON notification, failed OTP attempt tracking, student OTP regeneration + atomic handover, analytics views/CSV export, and Azure SQL query/row normalization checks.
+Runs 7 unit/integration tests against an isolated SQLite test database and mocked Azure branches, covering guard/invalid auth, parcel logging with SHA-256 OTP and JSON notification, failed OTP attempt tracking, student OTP regeneration + atomic handover, analytics views/CSV export, and Azure SQL query/row normalization checks.
 
 ---
 
@@ -102,7 +99,21 @@ Runs 7 unit/integration tests covering guard/invalid auth, parcel logging with S
 | :--- | :--- | :--- |
 | **Structured** | Azure SQL Database (or SQLite locally) | 3NF tables (`users`, `hostels`, `students`, `parcels`, `notifications`, `handovers`, `audit_logs`), keys, constraints, views, indexes, trigger. |
 | **Semi-Structured** | JSON in `notifications.payload_json` | Dynamic courier arrival payloads with nested `recipient` and `channels` metadata. |
-| **Unstructured** | Azure Blob Storage (`parcel-photos`, or `static/uploads/` locally) | Package condition images uploaded at the hostel gate. |
+| **Unstructured** | Azure Blob Storage (`parcel-photos` private container, or `static/uploads/` locally) | Package condition images uploaded at the hostel gate. |
+
+---
+
+## ⚠️ Known Limitations and Future Work
+
+1. **Private Blob Photo Display:** Parcel photos are uploaded to a private `parcel-photos` container in Azure Blob Storage, and the code saves the plain blob URL. Without SAS tokens or a backend image-proxy route, the browser cannot load those private blob URLs directly inside `<img>` tags yet.
+2. **No CSRF Tokens or Login Rate Limiting:** State-changing POST requests rely on `SameSite=Lax` cookies instead of explicit CSRF tokens, and `/api/login` logs failed attempts without throttling or locking out repeated guesses.
+3. **Demo Login Shortcuts and Seed Passwords:** The sidebar demo switcher, auto-login as `guard1`, and seeded default passwords are included for classroom demonstration only and must be removed or rotated before real production use.
+4. **`GET /api/students` Permissions:** The `/api/students` endpoint currently requires only `@login_required`, so any signed-in student can query the student list. It should be restricted with `@roles_required("guard", "warden", "admin")`.
+5. **File Upload Size and Content Checks:** Uploaded photos are checked by filename extension and sanitized with `secure_filename()`, but there is no `MAX_CONTENT_LENGTH` file size cap or image magic-byte/MIME inspection yet.
+6. **CORS and Session Cookie Hardening:** `CORS(app, supports_credentials=True)` uses permissive default origins, and `SESSION_COOKIE_SECURE` / `PERMANENT_SESSION_LIFETIME` are not explicitly set in `config.py` so local HTTP development still works. Both should be tightened for production.
+7. **No Azure SQL Serverless Wake-Up Retry:** `pyodbc.connect()` does not retry automatically if a paused Azure SQL Serverless database takes longer than the connection timeout to wake up on the first request.
+8. **Plain OTP Visibility at Logging:** `POST /api/parcels` returns the generated plain OTP once in its response at parcel logging (so the guard receives it in the API response). In a production system, the plain OTP would be delivered directly to the student via SMS or email and never shown to the guard.
+9. **Unpinned Dependency Versions:** `requirements.txt` uses `>=` minimum version constraints instead of exact `==` pins.
 
 ---
 
@@ -112,7 +123,13 @@ parceldesk-project/
 ├── app.py                      # Flask REST API, RBAC decorators, startup initialization
 ├── config.py                   # Environment-based configuration
 ├── requirements.txt            # Python dependencies (Flask, gunicorn, pyodbc, azure-storage-blob)
+├── parceldesk-analytics.pbix   # Power BI Desktop analytics report
 ├── .env.example                # Environment variable template
+├── analytics/
+│   ├── POWERBI_STEPS.md        # Step-by-step guide to build the Power BI report
+│   ├── vw_avg_pickup_time.csv  # Exported view data
+│   ├── vw_daily_parcel_volume.csv
+│   └── vw_pending_parcels.csv
 ├── database/
 │   ├── db.py                   # Azure SQL / SQLite connection, row normalization, SCOPE_IDENTITY helper
 │   ├── sqlite_schema.sql       # SQLite 3NF DDL
@@ -136,7 +153,8 @@ parceldesk-project/
     ├── SYSTEM_DESIGN.md        # 3-tier architecture & trade-offs
     ├── RDBMS_DESIGN.md         # 3NF design & ERD
     ├── DP900_DATA_SERVICES.md  # DP-900 data classification
-    └── CLOUD_SECURITY.md       # Security controls overview
+    ├── CLOUD_SECURITY.md       # Security controls overview
+    └── screenshots/            # Azure, live HTTPS site, and Power BI screenshots
 ```
 
 ---

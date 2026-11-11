@@ -2,7 +2,7 @@
 
 ## 1. DP-900 Core Data Classification
 
-In accordance with **Microsoft Azure DP-900 (Azure Data Fundamentals)** concepts, ParcelDesk classifies, stores, and analyzes data across three distinct architectural tiers:
+In accordance with **Microsoft Azure DP-900 (Azure Data Fundamentals)** concepts, ParcelDesk classifies, stores, and analyzes data across three distinct data categories:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -14,34 +14,33 @@ In accordance with **Microsoft Azure DP-900 (Azure Data Fundamentals)** concepts
 │ • Users & RBAC      │ • Courier delivery events  │ • Physical parcel photographs │
 │ • Hostels & Blocks  │ • In-App / SMS payloads    │ • Damaged box proof           │
 │ • Students Registry │ • Recipient metadata trees │ • Shipping label scans        │
-│ • Parcels Ledger    │ • Dynamic channel routing  │ • High-resolution JPEG/PNG    │
-│ • Handover Proof    │ • Nested event timestamps  │ • Direct Blob URLs            │
+│ • Parcels Ledger    │ • Dynamic channel routing  │ • Image files (PNG/JPG/WEBP)  │
+│ • Handover Proof    │ • Nested event timestamps  │ • Private blob URLs           │
 └─────────────────────┴────────────────────────────┴───────────────────────────────┘
 ```
 
 ---
 
 ## 2. Structured Data: Azure SQL Database
-- **Service**: Azure SQL Database (Serverless or Provisioned DTU/vCore tier).
-- **Relational Integrity**: Strict 3NF schema, primary keys, foreign keys with referential constraints (`ON DELETE CASCADE` / `ON DELETE RESTRICT`).
-- **T-SQL Script**: Fully defined in [`database/azure_sql_schema.sql`](file:///c:/Users/THARUN%20DEV/OneDrive/Documents/parceldesk-project/database/azure_sql_schema.sql).
+- **Service**: Azure SQL Database (`parceldesk-td/parceldesk-db`, connected via `pyodbc`; falls back to local SQLite when `AZURE_SQL_CONNECTION_STRING` is unset).
+- **Relational Integrity**: 3NF schema across 7 tables with primary keys, foreign keys, `UNIQUE` constraints, and `CHECK` constraints. Only SHA-256 hashed OTPs (`otp_hash`) are stored in the `parcels` table; the plain OTP is shown once at parcel logging.
+- **T-SQL Script**: Defined in [`database/azure_sql_schema.sql`](../database/azure_sql_schema.sql) (with 5 indexes in Azure SQL; local [`database/sqlite_schema.sql`](../database/sqlite_schema.sql) defines 2 additional indexes on `parcels(hostel_id)` and `audit_logs(user_id)`).
 - **Views**:
-  - `dbo.vw_pending_parcels`: Feeds live gate operations and Power BI DirectQuery.
-  - `dbo.vw_daily_parcel_volume`: Daily aggregation for trend analysis.
-  - `dbo.vw_avg_pickup_time`: Turnaround latency calculation.
+  - `dbo.vw_pending_parcels`: Pending parcels per hostel with waiting hours.
+  - `dbo.vw_daily_parcel_volume`: Daily total, collected, and pending parcel counts by hostel.
+  - `dbo.vw_avg_pickup_time`: Average pickup turnaround time in hours by hostel.
 - **Security**:
-  - Transparent Data Encryption (TDE) enabled at rest.
-  - Database Firewall rules restricting ingress exclusively to Azure App Service outbound virtual IP.
-  - Connection string configured via environment variables or Azure Key Vault.
+  - Transparent Data Encryption (TDE) enabled at rest by default on Azure SQL Database.
+  - Database Firewall rules enable **Allow Azure services and resources to access this server** (`0.0.0.0`) so Azure App Service can connect, plus explicit **client IP rules** for developer administration.
+  - Connection string is stored in Azure App Service environment settings (and `.env` locally, excluded from Git).
 
 ---
 
 ## 3. Semi-Structured Data: JSON Notification Documents
 - **Storage Target**: `notifications.payload_json` column.
 - **Characteristics**:
-  - Flexible, document-style key-value structure accommodating varied courier APIs (e.g. Amazon Logistics vs Blue Dart).
-  - Contains nested JSON objects (`recipient`, `channels`, `metadata`).
-  - Allows adding new communication channels (e.g., WhatsApp, WebPush) without running DDL schema migrations.
+  - Flexible, document-style key-value structure accommodating dynamic event attributes without schema migrations.
+  - Contains nested JSON objects (`recipient`, `channels`) and records `otp_issued` rather than plaintext OTPs.
 
 **Sample Notification Payload:**
 ```json
@@ -67,26 +66,19 @@ In accordance with **Microsoft Azure DP-900 (Azure Data Fundamentals)** concepts
 ---
 
 ## 4. Unstructured Data: Azure Blob Storage
-- **Service**: Azure Blob Storage (General-purpose v2).
-- **Container**: `parcel-photos` (Hot Access Tier for quick gate uploads and student viewing).
-- **Purpose**: High-resolution package condition photos and shipping label captures uploaded by gate guards.
-- **Resilience**: The backend [`services/storage_service.py`](file:///c:/Users/THARUN%20DEV/OneDrive/Documents/parceldesk-project/services/storage_service.py) automatically uploads to Azure Blob Storage using `BlobServiceClient` when credentials are present, and seamlessly falls back to local protected disk storage during offline local development.
+- **Service**: Azure Blob Storage (`parceldeskstore26`, `Standard_LRS`, `StorageV2`, minimum TLS 1.2, public blob access disabled).
+- **Container**: `parcel-photos` (**private container** — anonymous public read access is off).
+- **Purpose**: Package condition photos uploaded by gate staff during parcel entry.
+- **Implementation & Limitation**: [`services/storage_service.py`](../services/storage_service.py) uploads images to Azure Blob Storage using `BlobServiceClient` when `AZURE_STORAGE_CONNECTION_STRING` is configured (falling back to local `static/uploads/` otherwise) and stores `blob_client.url` in `parcels.photo_url`. Because `parcel-photos` is private, displaying those uploaded Azure Blob URLs directly inside browser `<img>` tags requires adding SAS token generation or an authenticated backend proxy route in future work.
 
 ---
 
 ## 5. Power BI Analytics & Reporting
 
-### Report Specifications:
-1. **Daily Parcel Volume (Line / Area Chart)**:
-   - X-Axis: `log_date`
-   - Y-Axis: `total_parcels`, `collected_parcels`, `pending_parcels`
-   - Legend: `hostel_name`
-2. **Average Pickup Turnaround Latency (Card / Bar Chart)**:
-   - Metric: `avg_pickup_hours` (duration between receipt at gate and verified handover).
-   - Target: Under 12.0 hours.
-3. **Pending Parcels by Hostel (Stacked Column Chart)**:
-   - Displays real-time physical backlog occupying shelf space at gate storage per hostel block.
-
-### Power BI Data Ingestion:
-- **DirectQuery / SQL Query**: Connects directly to Azure SQL Views (`vw_pending_parcels`, `vw_daily_parcel_volume`).
-- **REST Dataset Export**: Wardens can click **"Export Power BI Dataset (CSV)"** from the dashboard or consume `/api/analytics/powerbi-export` to refresh desktop models.
+### Report Artifacts & Specifications
+- **Power BI Desktop Report:** [`parceldesk-analytics.pbix`](../parceldesk-analytics.pbix) built from the exported CSVs of the three Azure SQL analytics views (`analytics/vw_daily_parcel_volume.csv`, `analytics/vw_avg_pickup_time.csv`, `analytics/vw_pending_parcels.csv`) following [`analytics/POWERBI_STEPS.md`](../analytics/POWERBI_STEPS.md).
+- **Three Visuals:**
+  1. **Parcels Per Day** (from `vw_daily_parcel_volume`: `log_date`, `total_parcels`, `hostel_name`).
+  2. **Average Pickup Hours per Hostel** (from `vw_avg_pickup_time`: `hostel_name`, `avg_pickup_hours`).
+  3. **Pending Parcels per Hostel** (from `vw_pending_parcels`: `hostel_name`, `parcel_id` count).
+- **REST Dataset Export**: Wardens and admins can also export a live CSV dataset directly from `/api/analytics/powerbi-export`.
