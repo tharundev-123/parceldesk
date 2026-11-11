@@ -135,6 +135,7 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_notifications_parcel'
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_handovers_parcel')
     CREATE INDEX idx_handovers_parcel ON dbo.handovers(parcel_id);
+GO
 
 -- =====================================================================
 -- VIEWS (Power BI DirectQuery / Import)
